@@ -1,8 +1,9 @@
-def main():
-    print("Conseguimos entrar")
-
+# psycog
+from dotenv import load_dotenv
+load_dotenv(override=True)
+from db import get_db_conn
+import os
 
 if __name__ == "__main__":
-    for i in range(10):
-        print(i)
-    main()
+    print(os.environ["DATABASE_URL"])
+    
