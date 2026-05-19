@@ -11,3 +11,6 @@ wheels/
 .Trash-*
 .env
 .ipynb*
+
+.env*
+*.log

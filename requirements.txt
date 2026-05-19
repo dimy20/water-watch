@@ -1,5 +1,9 @@
 psycopg
+psycopg[binary]
 pymongo[srv]
 pandas
 geopandas
 numpy
+yoyo-migrations
+python-dotenv
+pymongo
