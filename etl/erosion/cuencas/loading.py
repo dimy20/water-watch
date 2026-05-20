@@ -1,11 +1,15 @@
 import geopandas as gpd
-from etl.cuencas.pre_processing import fix_nombres, cambiar_nombres
+from etl.erosion.cuencas.pre_processing import fix_nombres, cambiar_nombres
 from db import get_mongo_conn, get_postgres_conn
 from pymongo import InsertOne
-from shapely.geometry import mapping
 import uuid
+from etl.erosion.cuencas.logger import log
+from etl.areas import crear_area_doc
 
-from etl.cuencas.logger import log
+def crear_fila_erosion_cuenca(area_id: str, ponderacion_erosion:float, cluster:int):
+	erosion_id = str(uuid.uuid4())
+	new_fila = (erosion_id, area_id, ponderacion_erosion, cluster) # <-------
+	return new_fila
 
 def load():
 	# mongo connection
@@ -25,28 +29,18 @@ def load():
 		nombre = item["NOMBRE"]
 		cluster = item["Cluster"]
 		geometry = item["geometry"]
-
+		ponderacion_erosion = item["A_pon_cuen"]
 		#mongo
-		area_doc = {
-			"_id":nombre,
-			"geometry":mapping(geometry)
-		}
+		area_doc = crear_area_doc(geometry, nombre)
+
 		operations.append(
 			InsertOne(
 				area_doc
 			)
 		)
 
-		#sql
-		erosion_id = str(uuid.uuid4())
-		area_id = item["NOMBRE"]
-		ponderacion_erosion = item["A_pon_cuen"]
-		cluster = item["Cluster"]
-		
-		new_row = (erosion_id, area_id, ponderacion_erosion, cluster)
+		new_row = crear_fila_erosion_cuenca(area_doc["_id"], ponderacion_erosion, cluster)
 		rows.append(new_row)
-
-	
 	try:
 		areas = mongo["areas"]
 		result = areas.bulk_write(operations)
@@ -55,9 +49,9 @@ def load():
 		with sql_conn.cursor() as cur:
 			cur.executemany(
 				"""--sql
-				INSERT INTO ErosionCuenca (
+				INSERT INTO erosion_cuenca(
 					erosion_id,
-					area_id,
+					area_id, 
 					ponderacion_erosion,
 					cluster
 				)
@@ -78,5 +72,3 @@ def load():
 		log.error (f"MongoDB: Error al insertar en areas {e}")
 
 	sql_conn.close()
-
-	
