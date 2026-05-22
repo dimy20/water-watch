@@ -3,13 +3,13 @@ from etl.erosion.suelos.logger import log
 from db import get_mongo_conn, get_postgres_conn
 from etl.erosion.suelos.pre_processing import pre_process
 from etl.areas import crear_area_doc
-import uuid
-from pymongo import InsertOne
+from etl.utils import create_id
+from pymongo import UpdateOne
 
 FILENAME = "./data/Erodabilidad_de_suelos_(geojson_wgs84).geojson"
 
 def crear_fila_erosion_suelo(area_id: str, grupo_coneat: str, perfil_modal: str, factor_k: float, taxonomia: str):
-	erosion_id = str(uuid.uuid4())
+	erosion_id = create_id(area_id, grupo_coneat, perfil_modal, factor_k, taxonomia)
 	new_fila = (erosion_id, area_id, grupo_coneat, perfil_modal, factor_k, taxonomia) 
 	return new_fila
 
@@ -37,8 +37,10 @@ def load():
 		area_doc = crear_area_doc(geometry)
 
 		operations.append(
-			InsertOne(
-				area_doc
+			UpdateOne(
+				{"_id": area_doc["_id"]},
+				{"$setOnInsert": area_doc},
+				upsert=True,
 			)
 		)
 		#sql
@@ -46,7 +48,7 @@ def load():
 		rows.append(new_row)
 	try:
 		areas = mongo["areas"]
-		result = areas.bulk_write(operations)
+		result = areas.bulk_write(operations, ordered=False)
 		log.info(f"MongoSQL: Se inserto en areas {result.inserted_count} documentos")
 
 		with sql_conn.cursor() as cur:
@@ -61,6 +63,7 @@ def load():
 					taxonomia
 				)
 				VALUES (%s, %s, %s, %s, %s, %s)
+				ON CONFLICT (erosion_id) DO NOTHING;
 				""",
 				rows
 			)
@@ -72,8 +75,6 @@ def load():
 
 	except Exception as e:
 		sql_conn.rollback()
-		log.error(f"PostgreSQL: Error insertando en erosion_suelos: {e}")
-	except Exception as e:
-		log.error (f"MongoDB: Error al insertar en areas {e}")
-
-	sql_conn.close()
+		log.error(f"Error insertando en datos de erosion suelos: {e}")
+	finally:
+		sql_conn.close()

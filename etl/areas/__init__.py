@@ -1,8 +1,8 @@
-import uuid
 from shapely.geometry import mapping
+from etl.utils import create_id
 
 def crear_area_doc(geometry, nombre: str = None):
-	area_id = str(uuid.uuid4())
+	area_id = create_id(geometry, nombre)
 	if not nombre:
 		nombre = "SIN_NOMBRE"
 	area_doc = {

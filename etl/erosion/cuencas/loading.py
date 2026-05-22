@@ -1,13 +1,14 @@
 import geopandas as gpd
 from etl.erosion.cuencas.pre_processing import fix_nombres, cambiar_nombres
 from db import get_mongo_conn, get_postgres_conn
-from pymongo import InsertOne
+from pymongo import UpdateOne
 import uuid
 from etl.erosion.cuencas.logger import log
 from etl.areas import crear_area_doc
+from etl.utils import create_id
 
 def crear_fila_erosion_cuenca(area_id: str, ponderacion_erosion:float, cluster:int):
-	erosion_id = str(uuid.uuid4())
+	erosion_id = create_id(area_id, ponderacion_erosion, cluster)
 	new_fila = (erosion_id, area_id, ponderacion_erosion, cluster) # <-------
 	return new_fila
 
@@ -34,8 +35,10 @@ def load():
 		area_doc = crear_area_doc(geometry, nombre)
 
 		operations.append(
-			InsertOne(
-				area_doc
+			UpdateOne(
+				{"_id": area_doc["_id"]},
+				{"$setOnInsert": area_doc},
+				upsert=True,
 			)
 		)
 
@@ -43,9 +46,8 @@ def load():
 		rows.append(new_row)
 	try:
 		areas = mongo["areas"]
-		result = areas.bulk_write(operations)
+		result = areas.bulk_write(operations, ordered=False)
 		log.info(f"MongoSQL: Se inserto en areas {result.inserted_count} documentos")
-
 		with sql_conn.cursor() as cur:
 			cur.executemany(
 				"""--sql
@@ -56,6 +58,7 @@ def load():
 					cluster
 				)
 				VALUES (%s, %s, %s, %s)
+				ON CONFLICT (erosion_id) DO NOTHING;
 				""",
 				rows
 			)
@@ -67,8 +70,6 @@ def load():
 
 	except Exception as e:
 		sql_conn.rollback()
-		log.error(f"PostgreSQL: Error insertando en ErosionCuenca: {e}")
-	except Exception as e:
-		log.error (f"MongoDB: Error al insertar en areas {e}")
-
-	sql_conn.close()
+		log.error(f"Error insertando en erosion cuencas : {e}")
+	finally:
+		sql_conn.close()

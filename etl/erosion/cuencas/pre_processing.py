@@ -14,7 +14,7 @@ def fix_nombres(df: pd.GeoDataFrame) -> str:
     df["NOMBRE"] = df["NOMBRE"].fillna("SIN_NOMBRE")
 
     nuevos_nombres = []
-    areas_disponibles = set(["AREA_A", "AREA_B", "AREA_C", "AREA_D"])
+    areas_disponibles = ["AREA_A", "AREA_B", "AREA_C", "AREA_D"]
     counts = {}
     nombres_repetidos = get_repetidos(df)
 
@@ -32,7 +32,7 @@ def fix_nombres(df: pd.GeoDataFrame) -> str:
             nuevo = fix_repetido(n)
             nuevos_nombres.append(nuevo)
         elif n == "SIN_NOMBRE":
-            nuevo = areas_disponibles.pop()
+            nuevo = areas_disponibles.pop(0)
             nuevos_nombres.append(nuevo)
         else:
             nuevos_nombres.append(n)

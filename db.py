@@ -12,5 +12,5 @@ def get_postgres_conn() -> Connection:
     return psycopg.connect(DATABASE_URL)
 
 def get_mongo_conn() -> Database:
-    client = MongoClient(MONGO_URL)
+    client = MongoClient(MONGO_URL, uuidRepresentation="standard")
     return client["grp05db"]
