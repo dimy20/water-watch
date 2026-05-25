@@ -15,3 +15,5 @@ wheels/
 .env*
 *.log
 data
+draft
+data*

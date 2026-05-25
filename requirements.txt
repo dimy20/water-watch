@@ -7,3 +7,5 @@ numpy
 yoyo-migrations
 python-dotenv
 pymongo
+stackstac
+pystac-client

@@ -6,12 +6,12 @@ import hashlib
 
 from etl.erosion.cuencas.loading import load as load_erosion_cuenca
 from etl.erosion.suelos.loading import load as load_erosion_suelos
+from etl.inumet.loading import load as load_inumet
+from etl.estaciones.loading import load as load_estaciones
 
 #entry point
 def main():
-    #load_erosion_cuenca()
-    #load_erosion_suelos()
-    pass
+    load_inumet("humedad_relativa")
 
 if __name__ == "__main__": # workaround 
     main()
