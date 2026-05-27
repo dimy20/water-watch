@@ -8,10 +8,14 @@ from etl.erosion.cuencas.loading import load as load_erosion_cuenca
 from etl.erosion.suelos.loading import load as load_erosion_suelos
 from etl.inumet.loading import load as load_inumet
 from etl.estaciones.loading import load as load_estaciones
+from etl.grillas.loading import load as load_grillas
 
 #entry point
 def main():
-    load_inumet("humedad_relativa")
+    #load_grillas("IBH")
+    #load_grillas("PAD")
+    #load_grillas("ANR")
+    pass
 
 if __name__ == "__main__": # workaround 
     main()
