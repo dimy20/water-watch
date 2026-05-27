@@ -11,8 +11,20 @@ from etl.inumet.pre_processing import (
 
 from etl.utils import create_id
 
-FILENAME_PRECIP = "./data/inumet_precipitacion_acumulada_horaria.csv"
-FILENAME_HUMEDAD = "./data/inumet_humedad_relativa.csv"
+CONFIG_BY_TIPO = {
+    "precipitacion": {
+        "filename": "./data/inumet_precipitacion_acumulada_horaria.csv",
+        "pre_process": pre_process_precipitacion,
+        "value_col": "precip_horario",
+        "code": "PRECIP_HORARIA",
+    },
+    "humedad_relativa": {
+        "filename": "./data/inumet_humedad_relativa.csv",
+        "pre_process": pre_process_humedad_relativa,
+        "value_col": "hum_relativa",
+        "code": "HUM_RELATIVA",
+    },
+}
 
 def crear_fila_param_inumet(location_id, fecha, value: float, code: str):
     granularidad = "HORA"
@@ -24,16 +36,14 @@ def crear_fila_param_inumet(location_id, fecha, value: float, code: str):
 
 
 def load(tipo: Literal["humedad_relativa", "precipitacion"]):
+    if tipo not in CONFIG_BY_TIPO:
+        raise RuntimeError(f"tipo solo puede ser {list(CONFIG_BY_TIPO.keys())}")
+
+    config = CONFIG_BY_TIPO[tipo]
     mongo = get_mongo_conn()
     sql_conn = get_postgres_conn()
-    if tipo == "precipitacion":
-        df = pd.read_csv(FILENAME_PRECIP, sep= ";")
-        df = pre_process_precipitacion(df)
-    elif tipo == "humedad_relativa":
-        df = pd.read_csv(FILENAME_HUMEDAD,sep= ";")
-        df = pre_process_humedad_relativa(df)
-    else:
-        raise RuntimeError("tipo solo puede ser humedad_relativa o precipitacion")
+    df = pd.read_csv(config["filename"], sep=";")
+    df = config["pre_process"](df)
 
     rows = []
     skipped = 0
@@ -63,14 +73,8 @@ def load(tipo: Literal["humedad_relativa", "precipitacion"]):
 
         fecha = item["fecha"]
         
-        if tipo == "precipitacion":
-            value = float(item["precip_horario"])
-            code = 'PRECIP_HORARIA'
-        elif tipo == "humedad_relativa":
-            value = float(item["hum_relativa"])
-            code = 'HUM_RELATIVA'
-
-        rows.append(crear_fila_param_inumet(location_id, fecha, value, code))
+        value = float(item[config["value_col"]])
+        rows.append(crear_fila_param_inumet(location_id, fecha, value, config["code"]))
     try:
         with sql_conn.cursor() as cur:
             cur.executemany(
