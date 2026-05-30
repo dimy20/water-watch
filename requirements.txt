@@ -9,3 +9,4 @@ python-dotenv
 pymongo
 stackstac
 pystac-client
+tqdm

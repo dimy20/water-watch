@@ -1,0 +1,68 @@
+{
+    "pH": [
+        "pH.csv"
+    ],
+    "ECOLI": [
+        "Indicator_Organism.csv"
+    ],
+    "FECALCOLI": [
+        "Indicator_Organism.csv"
+    ],
+    "TOTCOLI": [
+        "Indicator_Organism.csv"
+    ],
+    "TOTMESO": [
+        "Indicator_Organism.csv"
+    ],
+    "ENTCOCC": [
+        "Indicator_Organism.csv"
+    ],
+    "FECALSTREP": [
+        "Indicator_Organism.csv"
+    ],
+    "BOD": [
+        "Oxygen_Demand.csv"
+    ],
+    "COD": [
+        "Oxygen_Demand.csv"
+    ],
+    "PV": [
+        "Oxygen_Demand.csv"
+    ],
+    "O2-Dis": [
+        "Dissolved_Gas.csv"
+    ],
+    "O2-Dis-Sat": [
+        "Dissolved_Gas.csv"
+    ],
+    "NH3N": [
+        "Other_Nitrogen.csv"
+    ],
+    "NH4N": [
+        "Other_Nitrogen.csv"
+    ],
+    "TDP": [
+        "Phosphorus.csv"
+    ],
+    "TP": [
+        "Phosphorus.csv"
+    ],
+    "TPP": [
+        "Phosphorus.csv"
+    ],
+    "PN": [
+        "Other_Nitrogen.csv"
+    ],
+    "TN": [
+        "Other_Nitrogen.csv"
+    ],
+    "TDN": [
+        "Other_Nitrogen.csv"
+    ],
+    "TEMP": [
+        "Temperature.csv"
+    ],
+    "EC": [
+        "Electrical_Conductance.csv"
+    ]
+}
