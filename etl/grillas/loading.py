@@ -38,8 +38,10 @@ def load(tipo: Literal["IBH", "PAD", "ANR"]):
             if punto_id not in punto_docs:
                 punto_docs[punto_id] = {
                     "_id": punto_id,
-                    "latitud": lat,
-                    "longitud": lon,
+                    "location": {
+                        "type": "Point",
+                        "coordinates": [lon, lat],
+                    },
                 }
 
             medicion_id = create_id(punto_id, row["valor"], tipo, row["fecha_inicio"], row["fecha_fin"], "PERIODO")

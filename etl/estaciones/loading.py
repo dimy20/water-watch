@@ -11,8 +11,10 @@ def crear_estacion_doc(nombre: str, latitud: float, longitud: float):
 	estacion_doc = {
 		"_id": location_id,
 		"nombre": nombre,
-		"latitud": latitud,
-		"longitud": longitud,
+		"location": {
+			"type": "Point",
+			"coordinates": [longitud, latitud],
+		},
 	}
 	return estacion_doc
 
