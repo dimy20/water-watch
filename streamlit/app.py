@@ -1,5 +1,17 @@
+from pathlib import Path
+from dotenv import load_dotenv
+load_dotenv(override=True, dotenv_path=Path(__file__).parent.parent / ".env.local")
+
 import streamlit as st
 
-st.title("Proyecto de Ingeniería de Datos")
+st.set_page_config(
+    page_title="Calidad del Agua — Uruguay",
+    page_icon="💧",
+    layout="wide",
+)
 
-st.write("Servidor funcionando correctamente 🚀")
+pg = st.navigation(
+    [st.Page("evolucion.py", title="Dashboard", default=True)],
+    position="hidden",
+)
+pg.run()

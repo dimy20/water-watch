@@ -10,3 +10,5 @@ pymongo
 stackstac
 pystac-client
 tqdm
+streamlit
+plotly
