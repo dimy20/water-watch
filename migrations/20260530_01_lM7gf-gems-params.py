@@ -24,3 +24,4 @@ steps = [
     CHECK (fecha_inicio <= fecha_fin)
 );	 	 """)
 ]
+
