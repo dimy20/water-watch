@@ -1,0 +1,13 @@
+[
+  { "id": "departamentos",                   "requires": [] },
+  { "id": "estaciones",                      "requires": [] },
+  { "id": "grillas",                         "requires": [] },
+  { "id": "erosion.cuencas",                 "requires": [] },
+  { "id": "erosion.suelos",                  "requires": [] },
+  { "id": "inumet",                          "requires": ["estaciones"] },
+  { "id": "bacteriologia_ose",               "requires": ["departamentos"] },
+  { "id": "precipitaciones.load_estaciones", "requires": [] },
+  { "id": "precipitaciones.load_registros",  "requires": ["precipitaciones.load_estaciones"] },
+  { "id": "gems.load_estaciones",            "requires": [] },
+  { "id": "gems.load_mediciones",            "requires": ["gems.load_estaciones"] }
+]
