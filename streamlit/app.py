@@ -5,8 +5,8 @@ load_dotenv(override=True, dotenv_path=Path(__file__).parent.parent / ".env.loca
 import streamlit as st
 
 st.set_page_config(
-    page_title="Calidad del Agua — Uruguay",
-    page_icon="💧",
+    page_title="Water Watch",
+    page_icon=None,
     layout="wide",
 )
 

@@ -12,6 +12,7 @@ from queries import (
     get_gems_bacterio_por_departamento,
     get_hidrico_suelo_por_departamento,
     get_departamentos_geojson,
+    get_riesgo_por_departamento,
     TIPOS,
 )
 from styles import apply_styles
@@ -97,6 +98,11 @@ def _hidrico_suelo(_db, _pg, tipo, anio_inicio, anio_fin):
     return get_hidrico_suelo_por_departamento(_db, _pg, tipo, anio_inicio, anio_fin)
 
 
+@st.cache_data(ttl=3600)
+def _riesgo(_db, _pg, anio_inicio, anio_fin):
+    return get_riesgo_por_departamento(_db, _pg, anio_inicio, anio_fin)
+
+
 df_deptos = _departamentos(pg, db)
 
 depto_default = st.session_state.get("departamento_mapa", df_deptos["nombre"].iloc[0])
@@ -130,14 +136,15 @@ if anio_inicio > anio_fin:
 depto_row = df_deptos[df_deptos["nombre"] == nombre_depto].iloc[0]
 departamento_id = depto_row["departamento_id"]
 
-st.title("Calidad del Agua — Uruguay")
+st.title("Water Watch")
 st.subheader(f"{nombre_depto} · {anio_inicio}–{anio_fin}")
 
-tab_bacterio, tab_gems, tab_resumen, tab_suelo = st.tabs([
-    "🦠 Bacteriología",
-    "🔬 Fisicoquímica (GEMS)",
-    "📊 Resumen nacional",
-    "🌍 Estado hídrico del suelo",
+tab_bacterio, tab_gems, tab_resumen, tab_suelo, tab_riesgo = st.tabs([
+    "Bacteriología",
+    "Fisicoquímica (GEMS)",
+    "Resumen nacional",
+    "Estado hídrico del suelo",
+    "Indicador de Riesgo",
 ])
 
 # ── TAB BACTERIOLOGÍA ─────────────────────────────────────────────────────────
@@ -438,3 +445,138 @@ with tab_suelo:
         )
         st.plotly_chart(fig_bar, use_container_width=True)
         st.caption(f"Promedio de puntos de grilla por departamento. {len(df_suelo)} departamentos con datos.")
+
+# ── TAB INDICADOR DE RIESGO ───────────────────────────────────────────────────
+
+with tab_riesgo:
+    st.markdown("#### Indicador de Riesgo Combinado")
+
+    with st.expander("Metodología", expanded=True):
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            st.markdown(
+                "**Contaminación bacteriológica**  \n"
+                "OSE (% presencia coliformes totales) + GEMS (TOTCOLI, MPN/100ml).  \n"
+                "Activa si supera el percentil 66 del período."
+            )
+        with c2:
+            st.markdown(
+                "**Precipitación**  \n"
+                "Pluviometría media diaria (mm/día) — estaciones INIA.  \n"
+                "Activa si supera el percentil 66 del período."
+            )
+        with c3:
+            st.markdown(
+                "**Índice de Humedad del Balance (IBH)**  \n"
+                "Grillas INIA-GRAS, cobertura nacional.  \n"
+                "Activa si está por debajo del percentil 33 del período."
+            )
+
+        st.divider()
+        st.markdown(
+            "| Score | Interpretación |\n"
+            "|---|---|\n"
+            "| 0 | Sin condiciones adversas |\n"
+            "| 1 | Una condición supera el umbral |\n"
+            "| 2 | Dos condiciones coinciden |\n"
+            "| 3 | Las tres condiciones coinciden — riesgo elevado |"
+        )
+
+    st.caption(
+        "La precipitación cubre solo los 5 departamentos con estación INIA (score máximo 2 en los demás). "
+        "Los umbrales son relativos al período seleccionado."
+    )
+
+    df_riesgo = _riesgo(db, pg, anio_inicio, anio_fin)
+
+    if df_riesgo.empty:
+        st.info("No hay datos suficientes para calcular el indicador de riesgo en el período seleccionado.")
+    else:
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Score 0 (sin riesgo)", int((df_riesgo["score"] == 0).sum()))
+        col2.metric("Score 1", int((df_riesgo["score"] == 1).sum()))
+        col3.metric("Score 2", int((df_riesgo["score"] == 2).sum()))
+        col4.metric("Score 3 (riesgo total)", int((df_riesgo["score"] == 3).sum()))
+
+        geojson = _geojson(db)
+
+        def _fmt(val, fmt, suffix=""):
+            return f"{val:{fmt}}{suffix}" if val == val else "—"  # nan check
+
+        df_riesgo["_tip_ose"] = df_riesgo["pct_ose"].apply(lambda x: _fmt(x, ".1f", "%"))
+        df_riesgo["_tip_gems"] = df_riesgo["val_gems"].apply(lambda x: _fmt(x, ".2f", " MPN/100ml"))
+        df_riesgo["_tip_precip"] = df_riesgo["val_precip"].apply(
+            lambda x: _fmt(x, ".1f", " mm/día") if x == x else "sin datos"
+        )
+        df_riesgo["_tip_ibh"] = df_riesgo["val_suelo"].apply(lambda x: _fmt(x, ".2f"))
+        df_riesgo["_tip_c"] = df_riesgo["condicion_contam"].map({True: "⚠", False: ""})
+        df_riesgo["_tip_p"] = df_riesgo["condicion_precip"].map({True: "⚠", False: ""})
+        df_riesgo["_tip_s"] = df_riesgo["condicion_suelo"].map({True: "⚠", False: ""})
+
+        customdata = df_riesgo[[
+            "_tip_ose", "_tip_gems", "_tip_precip", "_tip_ibh",
+            "_tip_c", "_tip_p", "_tip_s",
+        ]].values
+
+        fig_riesgo = go.Figure(go.Choropleth(
+            geojson=geojson,
+            locations=df_riesgo["nombre"].tolist(),
+            z=df_riesgo["score"].tolist(),
+            featureidkey="properties.nombre",
+            colorscale=[
+                [0.0,  "#2ca02c"],
+                [0.33, "#ffdd57"],
+                [0.67, "#ff7f0e"],
+                [1.0,  "#d62728"],
+            ],
+            zmin=0,
+            zmax=3,
+            marker_line_color="white",
+            marker_line_width=1.5,
+            colorbar=dict(
+                title="Score",
+                tickvals=[0, 1, 2, 3],
+                ticktext=["0 — Sin riesgo", "1 — Bajo", "2 — Medio", "3 — Alto"],
+            ),
+            customdata=customdata,
+            hovertemplate=(
+                "<b>%{location}</b><br>"
+                "Score: <b>%{z}/3</b><br>"
+                "Contam. OSE: %{customdata[0]} %{customdata[4]}<br>"
+                "Contam. GEMS: %{customdata[1]} %{customdata[5]}<br>"
+                "Precipitación: %{customdata[2]} %{customdata[6]}<br>"
+                "IBH: %{customdata[3]}"
+                "<extra></extra>"
+            ),
+        ))
+        fig_riesgo.update_geos(fitbounds="locations", visible=False)
+        fig_riesgo.update_layout(
+            title=f"Indicador de Riesgo · {anio_inicio}–{anio_fin}",
+            margin={"r": 0, "t": 40, "l": 0, "b": 0},
+            height=550,
+        )
+        st.plotly_chart(fig_riesgo, use_container_width=True)
+
+        with st.expander("Ver datos por departamento"):
+            df_tabla_riesgo = df_riesgo[[
+                "nombre", "score", "pct_ose", "val_gems", "val_precip", "val_suelo",
+                "condicion_contam", "condicion_precip", "condicion_suelo",
+            ]].copy()
+            df_tabla_riesgo.columns = [
+                "Departamento", "Score",
+                "Contam. OSE (%)", "Contam. GEMS (MPN/100ml)",
+                "Precipitación (mm/día)", "IBH",
+                "⚠ Contam.", "⚠ Precip.", "⚠ Suelo",
+            ]
+            df_tabla_riesgo["⚠ Contam."] = df_tabla_riesgo["⚠ Contam."].map({True: "✓", False: "✗"})
+            df_tabla_riesgo["⚠ Precip."] = df_tabla_riesgo["⚠ Precip."].map({True: "✓", False: "✗"})
+            df_tabla_riesgo["⚠ Suelo"] = df_tabla_riesgo["⚠ Suelo"].map({True: "✓", False: "✗"})
+            for col in ["Contam. OSE (%)", "Contam. GEMS (MPN/100ml)", "Precipitación (mm/día)", "IBH"]:
+                df_tabla_riesgo[col] = df_tabla_riesgo[col].apply(
+                    lambda x: round(x, 2) if x == x else None
+                )
+            st.dataframe(
+                df_tabla_riesgo.sort_values("Score", ascending=False).reset_index(drop=True),
+                use_container_width=True,
+                hide_index=True,
+            )
