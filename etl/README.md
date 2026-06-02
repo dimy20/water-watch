@@ -16,7 +16,7 @@ Módulos de carga de datos hacia MongoDB y PostgreSQL.
 | [erosion](erosion/README.md) | Datos de erosión de suelos y cuencas |
 | [bacteriologia_ose](bacteriologia_ose/README.md) | Datos bacteriológicos de calidad de agua de OSE |
 | [sentinal](sentinal/README.md) | Por implementar |
-| [reclamos](reclamos/README.md) | Por implementar |
+| [reclamos](reclamos/README.md) | Reclamos comerciales de OSE (2019–2024) por departamento |
 
 ## Orden de carga
 
@@ -28,3 +28,4 @@ Algunos módulos requieren que otros estén cargados primero:
 - `bacteriologia_ose` requiere `departamentos`
 - `precipitaciones.load_registros` requiere `precipitaciones.load_estaciones`
 - `gems.load_mediciones` requiere `gems.load_estaciones`
+- `reclamos` requiere `departamentos`
