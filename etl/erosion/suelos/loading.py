@@ -49,7 +49,7 @@ def load():
 	try:
 		areas = mongo["areas"]
 		result = areas.bulk_write(operations, ordered=False)
-		log.info(f"MongoSQL: Se inserto en areas {result.inserted_count} documentos")
+		log.info(f"MongoDB: Se inserto en areas {result.upserted_count} documentos")
 
 		with sql_conn.cursor() as cur:
 			cur.executemany(

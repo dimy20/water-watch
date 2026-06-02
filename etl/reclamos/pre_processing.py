@@ -1,5 +1,6 @@
 import unicodedata
 import pandas as pd
+from etl.reclamos.logger import log
 
 COLS_KEEP = [
     "region",
@@ -65,18 +66,25 @@ def normalizar_nombre(s: str) -> str:
 
 
 def pre_process(df: pd.DataFrame) -> pd.DataFrame:
+    n_orig = len(df)
     df = df[[c for c in COLS_KEEP if c in df.columns]].copy()
 
+    sin_datos = int((df["departamento"] == "SIN DATOS").sum())
     df = df[df["departamento"] != "SIN DATOS"]
 
     df["fecha_inicio"] = pd.to_datetime(df["fecha_ingreso"], errors="coerce")
+    fechas_invalidas = int(df["fecha_inicio"].isna().sum())
     df["fecha_fin"] = df["fecha_inicio"] + pd.Timedelta(days=1)
     df = df.drop(columns=["fecha_ingreso"])
+    df = df.dropna(subset=["fecha_inicio"])
 
+    pre_2015 = int((df["fecha_inicio"].dt.year < 2015).sum())
     df = df[df["fecha_inicio"].dt.year >= 2015]
 
     df["tipo_reclamo"] = df["tipo_reclamo_comercial"].map(RECLAMOS_MAP)
     df = df.drop(columns=["tipo_reclamo_comercial"])
+    tipo_no_mapeado = int(df["tipo_reclamo"].isna().sum())
     df = df.dropna(subset=["tipo_reclamo"])
 
+    log.info(f"pre-process: {n_orig} entrada → {len(df)} salida (sin_datos={sin_datos}, fechas_invalidas={fechas_invalidas}, pre_2015={pre_2015}, tipo_no_mapeado={tipo_no_mapeado})")
     return df.reset_index(drop=True)

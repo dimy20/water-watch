@@ -1,5 +1,6 @@
-import pandas as pd 
-import calendar 
+import pandas as pd
+import calendar
+from etl.grillas.logger import log
 
 #"./data/grillas/ibh/ini_gras_ibh2015"
 
@@ -30,7 +31,6 @@ def borrar_columnas(df: pd.DataFrame) -> pd.DataFrame:
 
 def parse_date_column(column: str):
 	parts = column.split("_")
-	print(parts[0])
 	year = int(parts[0])
 	mes = int(parts[1][:2])
 	periodo = int(parts[1][-1])
@@ -49,7 +49,7 @@ def parse_date_column(column: str):
 		fecha_fin = pd.Timestamp(year=year, month=mes, day=ultimo_dia, hour=23, minute=59, second=59)
 		return fecha_inicio, fecha_fin
 	else:
-		print(column)
+		log.warning(f"Columna con periodo invalido: {column}")
 		raise ValueError(f"Fecha invalida, periodo = {periodo}")
 
 def invertir_columnas(df: pd.DataFrame) -> pd.DataFrame:

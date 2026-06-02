@@ -1,5 +1,6 @@
 import unicodedata
 import pandas as pd
+from etl.bacteriologia_ose.logger import log
 
 TRIMESTRE_INICIO = {1: "01-01", 2: "04-01", 3: "07-01", 4: "10-01"}
 TRIMESTRE_FIN    = {1: "03-31", 2: "06-30", 3: "09-30", 4: "12-31"}
@@ -11,7 +12,10 @@ def normalizar_nombre(s: str) -> str:
     return "".join(c for c in unicodedata.normalize("NFD", s) if unicodedata.category(c) != "Mn")
 
 def pre_process(df: pd.DataFrame) -> pd.DataFrame:
+    n_orig = len(df)
     df = df.drop(columns=[c for c in COLS_DROP if c in df.columns]).copy()
+
+    valor_invalido = int((df["valor"] == "<1").sum())
     df = df[df["valor"] != "<1"]
 
     num = df["trimestre"].str.extract(r"(\d)").astype(int)[0]
@@ -23,4 +27,5 @@ def pre_process(df: pd.DataFrame) -> pd.DataFrame:
     df["granularidad"] = "TRIMESTRE"
 
     df = df.drop(columns=["año", "trimestre"])
+    log.info(f"pre-process: {n_orig} entrada → {len(df)} salida (valor_invalido={valor_invalido})")
     return df

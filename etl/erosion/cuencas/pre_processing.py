@@ -1,5 +1,6 @@
 import geopandas as pd
 from typing import List
+from etl.erosion.cuencas.logger import log
 
 def get_repetidos(df: pd.GeoDataFrame):
     nombres_count = {}
@@ -11,12 +12,14 @@ def get_repetidos(df: pd.GeoDataFrame):
     return nombres_repetidos
 
 def fix_nombres(df: pd.GeoDataFrame) -> str:
+    sin_nombre = int(df["NOMBRE"].isna().sum())
     df["NOMBRE"] = df["NOMBRE"].fillna("SIN_NOMBRE")
 
     nuevos_nombres = []
     areas_disponibles = ["AREA_A", "AREA_B", "AREA_C", "AREA_D"]
     counts = {}
     nombres_repetidos = get_repetidos(df)
+    log.info(f"fix_nombres: {len(nombres_repetidos)} nombres duplicados, {sin_nombre} SIN_NOMBRE")
 
     for nombre in nombres_repetidos:
         counts[nombre] = 0

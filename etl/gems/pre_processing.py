@@ -1,4 +1,5 @@
 import pandas as pd
+from etl.gems.logger import log
 
 COLS_DROP = [
     "Analysis Method Code",
@@ -41,6 +42,8 @@ def pre_process_gems_params(df: pd.DataFrame) -> pd.DataFrame:
     df["depth"] = pd.to_numeric(df["depth"], errors="coerce").astype("float32")
 
     df = df.drop(columns=["Sample Date", "Sample Time"])
+    n_before = len(df)
     df = df.dropna(subset=["code", "fecha_inicio", "value"])
+    log.info(f"pre-process gems_params: {n_before} entrada → {len(df)} salida (nulos_descartados={n_before - len(df)})")
 
     return df
