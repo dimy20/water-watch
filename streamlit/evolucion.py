@@ -13,6 +13,8 @@ from queries import (
     get_hidrico_suelo_por_departamento,
     get_departamentos_geojson,
     get_riesgo_por_departamento,
+    get_reclamos_trimestral,
+    get_correlacion_reclamos_calidad,
     TIPOS,
 )
 from styles import apply_styles
@@ -103,6 +105,16 @@ def _riesgo(_db, _pg, anio_inicio, anio_fin):
     return get_riesgo_por_departamento(_db, _pg, anio_inicio, anio_fin)
 
 
+@st.cache_data(ttl=3600)
+def _correlacion(_pg, _db, anio_inicio, anio_fin):
+    return get_correlacion_reclamos_calidad(_pg, _db, anio_inicio, anio_fin)
+
+
+@st.cache_data(ttl=600)
+def _reclamos_trimestral(_pg, departamento_id, anio_inicio, anio_fin):
+    return get_reclamos_trimestral(_pg, departamento_id, anio_inicio, anio_fin)
+
+
 df_deptos = _departamentos(pg, db)
 
 depto_default = st.session_state.get("departamento_mapa", df_deptos["nombre"].iloc[0])
@@ -139,12 +151,13 @@ departamento_id = depto_row["departamento_id"]
 st.title("Water Watch")
 st.subheader(f"{nombre_depto} · {anio_inicio}–{anio_fin}")
 
-tab_bacterio, tab_gems, tab_resumen, tab_suelo, tab_riesgo = st.tabs([
+tab_bacterio, tab_gems, tab_resumen, tab_suelo, tab_riesgo, tab_reclamos = st.tabs([
     "Bacteriología",
     "Fisicoquímica (GEMS)",
     "Resumen nacional",
     "Estado hídrico del suelo",
     "Indicador de Riesgo",
+    "Reclamos vs Calidad",
 ])
 
 # ── TAB BACTERIOLOGÍA ─────────────────────────────────────────────────────────
@@ -580,3 +593,109 @@ with tab_riesgo:
                 use_container_width=True,
                 hide_index=True,
             )
+
+# ── TAB RECLAMOS VS CALIDAD ───────────────────────────────────────────────────
+
+with tab_reclamos:
+    st.markdown("#### Reclamos OSE vs Calidad Bacteriológica")
+    st.caption(
+        "Los reclamos son de tipo comercial (facturación, lectura de medidor, tarifas). "
+        "La relación con la calidad bacteriológica es exploratoria."
+    )
+
+    # ── Scatter nacional ─────────────────────────────────────────────────────
+
+    st.markdown("##### Correlación por departamento")
+
+    df_corr = _correlacion(pg, db, anio_inicio, anio_fin)
+
+    if df_corr.empty:
+        st.info("No hay datos suficientes para el período seleccionado.")
+    else:
+        fig_scatter = go.Figure(go.Scatter(
+            x=df_corr["pct_presencia"],
+            y=df_corr["total_reclamos"],
+            mode="markers+text",
+            text=df_corr["nombre"],
+            textposition="top center",
+            marker=dict(size=10, color="#e53935"),
+            hovertemplate="<b>%{text}</b><br>Contaminación: %{x:.1f}%<br>Reclamos: %{y:,}<extra></extra>",
+        ))
+        fig_scatter.update_layout(
+            xaxis_title="% muestras con contaminación (Coliformes Totales)",
+            yaxis_title="Total reclamos comerciales",
+            xaxis=dict(ticksuffix="%"),
+            hovermode="closest",
+            height=500,
+        )
+        st.plotly_chart(fig_scatter, use_container_width=True)
+
+    st.divider()
+
+    # ── Evolución temporal del departamento seleccionado ─────────────────────
+
+    st.markdown(f"##### Evolución trimestral — {nombre_depto}")
+
+    df_rec_trim = _reclamos_trimestral(pg, departamento_id, anio_inicio, anio_fin)
+    df_cal_crudo = _calidad(pg, departamento_id, anio_inicio, anio_fin, ("COLIFORMES TOTALES",))
+
+    if df_rec_trim.empty and df_cal_crudo.empty:
+        st.info(f"No hay datos para {nombre_depto} en el período seleccionado.")
+    else:
+        fig_dual = go.Figure()
+
+        if not df_rec_trim.empty:
+            fig_dual.add_trace(go.Bar(
+                x=df_rec_trim["periodo"],
+                y=df_rec_trim["n_reclamos"],
+                name="Reclamos",
+                marker_color="rgba(66,133,244,0.7)",
+                yaxis="y1",
+                hovertemplate="%{x|%Y-%m}: %{y:,} reclamos<extra></extra>",
+            ))
+
+        if not df_cal_crudo.empty:
+            df_cal_grafico, _ = transformar_para_dashboard(df_cal_crudo)
+            df_cal_grafico = df_cal_grafico.sort_values("periodo")
+            fig_dual.add_trace(go.Scatter(
+                x=df_cal_grafico["periodo"],
+                y=df_cal_grafico["pct_presencia"],
+                name="% contaminación",
+                mode="lines+markers",
+                line=dict(color="#e53935", width=2),
+                yaxis="y2",
+                hovertemplate="%{x|%Y-%m}: %{y:.1f}% contaminación<extra></extra>",
+            ))
+
+        fig_dual.update_layout(
+            xaxis=dict(title="Trimestre", type="date"),
+            yaxis=dict(title="Reclamos", side="left", rangemode="tozero"),
+            yaxis2=dict(
+                title="% contaminación",
+                side="right",
+                overlaying="y",
+                ticksuffix="%",
+                showgrid=False,
+                rangemode="tozero",
+            ),
+            hovermode="x unified",
+            legend=dict(orientation="h", y=-0.2),
+            height=450,
+        )
+        st.plotly_chart(fig_dual, use_container_width=True)
+
+    st.divider()
+
+    # ── Tabla resumen por departamento ────────────────────────────────────────
+
+    st.markdown("##### Resumen por departamento")
+
+    if not df_corr.empty:
+        df_tabla_rec = df_corr[["nombre", "total_reclamos", "pct_presencia"]].copy()
+        df_tabla_rec.columns = ["Departamento", "Reclamos totales", "% Contaminación"]
+        df_tabla_rec["% Contaminación"] = df_tabla_rec["% Contaminación"].round(1)
+        st.dataframe(
+            df_tabla_rec.sort_values("Reclamos totales", ascending=False).reset_index(drop=True),
+            use_container_width=True,
+            hide_index=True,
+        )
