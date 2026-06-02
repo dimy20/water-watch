@@ -1,5 +1,5 @@
 # psycog
-#import init_logger
+import init_logger
 from dotenv import load_dotenv
 load_dotenv(override=True, dotenv_path=".env.local")
 import hashlib
