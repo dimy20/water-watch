@@ -1,9 +1,10 @@
 """
 Uso:
-    python scripts/backup.py              # los tres
+    python scripts/backup.py              # sube los tres
     python scripts/backup.py postgres
     python scripts/backup.py mongo
     python scripts/backup.py data
+    python scripts/backup.py pull-data    # descarga y extrae el zip más reciente de data/
 
 Variables en .env.local:
     ETL_DATABASE_URL, ETL_MONGO_URL, S3_BUCKET
@@ -69,9 +70,29 @@ def backup_data(tmp, ts, s3, bucket):
     print(f"data OK      s3://{bucket}/{key}")
 
 
+def pull_data(tmp, s3, bucket):
+    response = s3.list_objects_v2(Bucket=bucket, Prefix="data/data_")
+    objects = response.get("Contents", [])
+    if not objects:
+        print("ERROR: no hay backups de data en S3.")
+        sys.exit(1)
+
+    latest = max(objects, key=lambda o: o["LastModified"])
+    key = latest["Key"]
+    dest = tmp / "data_pull.zip"
+
+    print(f"descargando s3://{bucket}/{key} ...")
+    s3.download_file(bucket, key, str(dest))
+
+    with zipfile.ZipFile(dest, "r") as zf:
+        zf.extractall(ROOT)
+
+    print(f"pull-data OK  extraido en {ROOT / 'data'}")
+
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("target", nargs="?", choices=["postgres", "mongo", "data"])
+    parser.add_argument("target", nargs="?", choices=["postgres", "mongo", "data", "pull-data"])
     args = parser.parse_args()
 
     load_dotenv(ROOT / ".env.local")
@@ -84,26 +105,30 @@ def main():
         print("ERROR: Falta S3_BUCKET")
         sys.exit(1)
 
-    run_postgres = args.target in (None, "postgres")
-    run_mongo = args.target in (None, "mongo")
-    run_data = args.target in (None, "data")
+    run_pull = args.target == "pull-data"
+    run_postgres = not run_pull and args.target in (None, "postgres")
+    run_mongo = not run_pull and args.target in (None, "mongo")
+    run_data = not run_pull and args.target in (None, "data")
 
     if run_postgres:
         _check_cmd("pg_dump")
     if run_mongo:
         _check_cmd("mongodump")
 
-    ts = datetime.now().strftime("%Y%m%d_%H%M")
     s3 = boto3.client("s3")
 
     with tempfile.TemporaryDirectory() as tmp_str:
         tmp = Path(tmp_str)
-        if run_postgres:
-            backup_postgres(pg_url, tmp, ts, s3, bucket)
-        if run_mongo:
-            backup_mongo(mongo_url, tmp, ts, s3, bucket)
-        if run_data:
-            backup_data(tmp, ts, s3, bucket)
+        if run_pull:
+            pull_data(tmp, s3, bucket)
+        else:
+            ts = datetime.now().strftime("%Y%m%d_%H%M")
+            if run_postgres:
+                backup_postgres(pg_url, tmp, ts, s3, bucket)
+            if run_mongo:
+                backup_mongo(mongo_url, tmp, ts, s3, bucket)
+            if run_data:
+                backup_data(tmp, ts, s3, bucket)
 
 
 if __name__ == "__main__":
