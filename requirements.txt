@@ -12,3 +12,4 @@ pystac-client
 tqdm
 streamlit
 plotly
+boto3
