@@ -15,6 +15,8 @@ from queries import (
     get_riesgo_por_departamento,
     get_reclamos_trimestral,
     get_correlacion_reclamos_calidad,
+    get_estaciones_con_chla,
+    get_precipitacion_vs_chla,
     TIPOS,
 )
 from styles import apply_styles
@@ -115,6 +117,16 @@ def _reclamos_trimestral(_pg, departamento_id, anio_inicio, anio_fin):
     return get_reclamos_trimestral(_pg, departamento_id, anio_inicio, anio_fin)
 
 
+@st.cache_data(ttl=3600)
+def _estaciones_chla(_pg, _db):
+    return get_estaciones_con_chla(_pg, _db)
+
+
+@st.cache_data(ttl=600)
+def _precip_vs_chla(_pg, _db, location_id, anio_inicio, anio_fin, lag_meses):
+    return get_precipitacion_vs_chla(_pg, _db, location_id, anio_inicio, anio_fin, lag_meses)
+
+
 df_deptos = _departamentos(pg, db)
 
 depto_default = st.session_state.get("departamento_mapa", df_deptos["nombre"].iloc[0])
@@ -151,13 +163,14 @@ departamento_id = depto_row["departamento_id"]
 st.title("Water Watch")
 st.subheader(f"{nombre_depto} · {anio_inicio}–{anio_fin}")
 
-tab_bacterio, tab_gems, tab_resumen, tab_suelo, tab_riesgo, tab_reclamos = st.tabs([
+tab_bacterio, tab_gems, tab_resumen, tab_suelo, tab_riesgo, tab_reclamos, tab_precip_chla = st.tabs([
     "Bacteriología",
     "Fisicoquímica (GEMS)",
     "Resumen nacional",
     "Estado hídrico del suelo",
     "Indicador de Riesgo",
     "Reclamos vs Calidad",
+    "Precipitación vs Chl-a",
 ])
 
 # ── TAB BACTERIOLOGÍA ─────────────────────────────────────────────────────────
@@ -699,3 +712,92 @@ with tab_reclamos:
             use_container_width=True,
             hide_index=True,
         )
+
+# ── TAB PRECIPITACIÓN VS CHL-A ────────────────────────────────────────────────
+
+with tab_precip_chla:
+    st.markdown("#### Precipitación (PAD) vs Clorofila-a")
+    st.caption(
+        "Compara la precipitación acumulada decádica (PAD) del punto de grilla más cercano "
+        "a una estación GEMS con la Clorofila-a medida en esa estación, desplazando la "
+        "precipitación un número de meses (lag) para evaluar su efecto posterior."
+    )
+
+    df_estaciones_chla = _estaciones_chla(pg, db)
+
+    if df_estaciones_chla.empty:
+        st.info("No hay estaciones GEMS con mediciones de Chl-a.")
+    else:
+        col_est, col_lag = st.columns([3, 1])
+        with col_est:
+            nombre_estacion = st.selectbox(
+                "Estación GEMS",
+                options=df_estaciones_chla["nombre"].tolist(),
+            )
+        with col_lag:
+            lag_meses = st.selectbox("Lag (meses)", options=[1, 2, 3], index=0)
+
+        location_id = df_estaciones_chla.loc[
+            df_estaciones_chla["nombre"] == nombre_estacion, "location_id"
+        ].iloc[0]
+
+        df_precip_chla = _precip_vs_chla(pg, db, location_id, anio_inicio, anio_fin, lag_meses)
+
+        if df_precip_chla.empty:
+            st.info(f"No hay datos para {nombre_estacion} en el período seleccionado.")
+        else:
+            fig_precip_chla = go.Figure()
+
+            if df_precip_chla["pad"].notna().any():
+                fig_precip_chla.add_trace(go.Bar(
+                    x=df_precip_chla["periodo"],
+                    y=df_precip_chla["pad"],
+                    name=f"PAD (t-{lag_meses})",
+                    marker_color="rgba(66,133,244,0.7)",
+                    yaxis="y1",
+                    hovertemplate="%{x|%Y-%m}: %{y:.1f} mm<extra></extra>",
+                ))
+            else:
+                st.info("No se encontró un punto de grilla PAD cercano a esta estación.")
+
+            if df_precip_chla["chla"].notna().any():
+                fig_precip_chla.add_trace(go.Scatter(
+                    x=df_precip_chla["periodo"],
+                    y=df_precip_chla["chla"],
+                    name="Clorofila-a",
+                    mode="lines+markers",
+                    connectgaps=False,
+                    line=dict(color="#2e7d32", width=2),
+                    yaxis="y2",
+                    hovertemplate="%{x|%Y-%m}: %{y:.3f} mg/l<extra></extra>",
+                ))
+
+            fig_precip_chla.update_layout(
+                xaxis=dict(title="Mes", type="date"),
+                yaxis=dict(title="PAD (mm)", side="left", rangemode="tozero"),
+                yaxis2=dict(
+                    title="Clorofila-a (mg/l)",
+                    side="right",
+                    overlaying="y",
+                    showgrid=False,
+                    rangemode="tozero",
+                ),
+                hovermode="x unified",
+                legend=dict(orientation="h", y=-0.2),
+                height=450,
+            )
+            st.plotly_chart(fig_precip_chla, use_container_width=True)
+
+            st.divider()
+            st.markdown("##### Detalle mensual")
+
+            df_tabla_precip_chla = df_precip_chla.copy()
+            df_tabla_precip_chla["periodo"] = df_tabla_precip_chla["periodo"].dt.strftime("%Y-%m")
+            df_tabla_precip_chla.columns = ["Mes", "PAD (mm)", "Clorofila-a (mg/l)"]
+            df_tabla_precip_chla["PAD (mm)"] = df_tabla_precip_chla["PAD (mm)"].round(1)
+            df_tabla_precip_chla["Clorofila-a (mg/l)"] = df_tabla_precip_chla["Clorofila-a (mg/l)"].round(3)
+            st.dataframe(
+                df_tabla_precip_chla,
+                use_container_width=True,
+                hide_index=True,
+            )

@@ -209,6 +209,17 @@ Esquema PostgreSQL gestionado con yoyo-migrations (`migrations/`).
 | `fecha_inicio` | TIMESTAMP | NOT NULL |
 | `fecha_fin` | TIMESTAMP | NOT NULL, CHECK `fecha_fin >= fecha_inicio` |
 
+**`etl_file_state`**
+
+| Columna | Tipo | Notas |
+|---|---|---|
+| `resource_id` | VARCHAR | PK — id del resource en CKAN |
+| `package` | VARCHAR | NOT NULL — dataset CKAN (ej. `inia-pad-por-grilla`) |
+| `modulo` | VARCHAR | NOT NULL — módulo ETL afectado, según `etl/etl_graph.json` |
+| `hash` | VARCHAR | NOT NULL — hash MD5 reportado por CKAN para el resource |
+| `archivo_local` | VARCHAR | NOT NULL — ruta relativa a `data/` |
+| `last_synced` | TIMESTAMP | NOT NULL |
+
 ---
 
 ### ETL modular
@@ -242,7 +253,22 @@ python scripts/count_records.py
 
 ### CDC
 
-Por implementar.
+Sincronización de archivos fuente desde el catálogo de datos abiertos (`catalogodatos.gub.uy`, API CKAN). La carga inicial (2015–2025) ya está en `data/`; el CDC solo trackea recursos de `MIN_YEAR` (2026) en adelante, que son los que se siguen actualizando.
+
+| Componente | Descripción |
+|---|---|
+| `etl/ckan_client.py` | Wrapper de la API CKAN: `package_search(package)` y `download_resource(resource)`. |
+| `etl/ckan_sources.py` | `SOURCES`: mapeo de cada dataset CKAN al módulo ETL afectado y a un resolver que deriva la ruta destino en `data/` a partir del resource (filtrando por formato CSV y `MIN_YEAR`). |
+| `etl_file_state` | Tabla PostgreSQL con el último hash sincronizado por resource (ver DDL). |
+| `scripts/sync_data.py` | Recorre `SOURCES`, compara el hash de cada resource contra `etl_file_state` y descarga a `data/` solo los archivos nuevos o modificados. |
+
+```bash
+python scripts/sync_data.py
+```
+
+El script **no** corre el pipeline ETL — solo actualiza `data/` y `etl_file_state`. Correr `python main.py` después es seguro e idempotente gracias al dedup determinístico (`ON CONFLICT DO NOTHING`) de cada loader.
+
+Esto es independiente del backup de `data/` a S3 (`scripts/backup.py data` / `pull-data`): CKAN → `data/` es la sincronización con la fuente; `data/` ↔ S3 es la distribución entre entornos del equipo.
 
 ### Seguridad
 
@@ -279,7 +305,7 @@ streamlit run streamlit/app.py
 | Archivo | Descripción |
 |---|---|
 | `app.py` | Entry point. Configura la app y registra las páginas. |
-| `evolucion.py` | Dashboard principal — 6 tabs por departamento y rango de años. |
+| `evolucion.py` | Dashboard principal — 7 tabs por departamento y rango de años. |
 | `mapa.py` | Mapa coroplético nacional de contaminación OSE. Click en un departamento navega a `evolucion.py`. Actualmente no está en la navegación de `app.py`. |
 
 #### Filtros globales (sidebar)
@@ -296,6 +322,7 @@ Departamento · Año de inicio · Año de fin (rango 2017–2025).
 | **Estado hídrico del suelo** | Grillas (IBH, PAD, ANR) | Mapa coroplético + barras por departamento. Promedio de puntos de grilla dentro de cada departamento. |
 | **Indicador de Riesgo** | OSE + GEMS + Precipitaciones + IBH | Score 0–3 por departamento. Combina tres condiciones: contaminación bacteriológica (OSE + GEMS), precipitación y estado hídrico del suelo. Mapa coroplético con tooltip por condición. |
 | **Reclamos vs Calidad** | ReclamosOSE + OSEParam | Scatter por departamento (reclamos comerciales vs % contaminación), evolución trimestral dual-eje (barras de reclamos + línea de % contaminación), tabla resumen. |
+| **Precipitación vs Chl-a** | GemsParams (Chl-a) + Grillas (PAD) | Selector de estación GEMS con mediciones de Chl-a y de lag (1–3 meses). Para cada estación se busca el punto de grilla PAD más cercano (`$nearSphere`) y se compara su precipitación mensual (desplazada por el lag) contra la Clorofila-a mensual, en gráfico dual-eje y tabla. |
 
 #### Metodología del indicador de riesgo
 
@@ -317,6 +344,7 @@ Score = suma de condiciones activas (0 = sin riesgo, 3 = riesgo elevado).
 | `grillas.py` | Estado hídrico por departamento (puntos de grilla `$geoWithin`) |
 | `riesgo.py` | Indicador de riesgo combinado |
 | `reclamos.py` | Reclamos por departamento, serie trimestral, correlación reclamos–calidad |
+| `precipitacion_chla.py` | Estaciones GEMS con Chl-a, punto de grilla PAD más cercano (`$nearSphere`), cruce mensual PAD vs Chl-a con lag |
 
 #### Caché
 

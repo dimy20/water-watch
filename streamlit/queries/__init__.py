@@ -12,3 +12,7 @@ from .reclamos import (
     get_reclamos_trimestral,
     get_correlacion_reclamos_calidad,
 )
+from .precipitacion_chla import (
+    get_estaciones_con_chla,
+    get_precipitacion_vs_chla,
+)

@@ -5,6 +5,7 @@ Uso:
     python scripts/backup.py mongo
     python scripts/backup.py data
     python scripts/backup.py pull-data    # descarga y extrae el zip más reciente de data/
+    python scripts/backup.py pull-data --timestamp 20260610_1530  # descarga una version especifica
 
 Variables en .env.local:
     ETL_DATABASE_URL, ETL_MONGO_URL, S3_BUCKET
@@ -23,6 +24,7 @@ from datetime import datetime
 from pathlib import Path
 
 import boto3
+import botocore
 from dotenv import load_dotenv
 
 ROOT = Path(__file__).parent.parent
@@ -70,15 +72,24 @@ def backup_data(tmp, ts, s3, bucket):
     print(f"data OK      s3://{bucket}/{key}")
 
 
-def pull_data(tmp, s3, bucket):
-    response = s3.list_objects_v2(Bucket=bucket, Prefix="data/data_")
-    objects = response.get("Contents", [])
-    if not objects:
-        print("ERROR: no hay backups de data en S3.")
-        sys.exit(1)
+def pull_data(tmp, s3, bucket, timestamp=None):
+    if timestamp:
+        key = f"data/data_{timestamp}.zip"
+        try:
+            s3.head_object(Bucket=bucket, Key=key)
+        except botocore.exceptions.ClientError:
+            print(f"ERROR: no existe s3://{bucket}/{key}")
+            sys.exit(1)
+    else:
+        response = s3.list_objects_v2(Bucket=bucket, Prefix="data/data_")
+        objects = response.get("Contents", [])
+        if not objects:
+            print("ERROR: no hay backups de data en S3.")
+            sys.exit(1)
 
-    latest = max(objects, key=lambda o: o["LastModified"])
-    key = latest["Key"]
+        latest = max(objects, key=lambda o: o["LastModified"])
+        key = latest["Key"]
+
     dest = tmp / "data_pull.zip"
 
     print(f"descargando s3://{bucket}/{key} ...")
@@ -93,6 +104,7 @@ def pull_data(tmp, s3, bucket):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("target", nargs="?", choices=["postgres", "mongo", "data", "pull-data"])
+    parser.add_argument("--timestamp", help="para pull-data: descarga data_<timestamp>.zip en vez del mas reciente")
     args = parser.parse_args()
 
     load_dotenv(ROOT / ".env.local")
@@ -120,7 +132,7 @@ def main():
     with tempfile.TemporaryDirectory() as tmp_str:
         tmp = Path(tmp_str)
         if run_pull:
-            pull_data(tmp, s3, bucket)
+            pull_data(tmp, s3, bucket, args.timestamp)
         else:
             ts = datetime.now().strftime("%Y%m%d_%H%M")
             if run_postgres:
