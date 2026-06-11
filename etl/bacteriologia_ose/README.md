@@ -4,7 +4,7 @@ Carga datos bacteriológicos de calidad de agua de OSE en PostgreSQL, agrupados 
 
 ## Fuente de datos
 
-`data/calidad_de_agua_bacteriologia_2017t1_2025t2 (1).csv` — registros bacteriológicos de OSE desde 2017 T1 hasta 2025 T2.
+`data/calidad_de_agua_bacteriologia.csv` — registros bacteriológicos de OSE (sincronizado desde el dataset `calidad-de-agua` del catálogo de datos abiertos).
 
 ## Pre-processing
 

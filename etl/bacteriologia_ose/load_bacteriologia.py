@@ -4,7 +4,7 @@ from etl.utils import create_id
 from etl.bacteriologia_ose.logger import log
 from etl.bacteriologia_ose.pre_processing import pre_process, normalizar_nombre
 
-DATA_FILE = "./data/calidad_de_agua_bacteriologia_2017t1_2025t2 (1).csv"
+DATA_FILE = "./data/calidad_de_agua_bacteriologia.csv"
 
 def load():
     try:
