@@ -10,5 +10,7 @@
   { "id": "precipitaciones.load_registros",  "requires": ["precipitaciones.load_estaciones"] },
   { "id": "gems.load_estaciones",            "requires": [] },
   { "id": "gems.load_mediciones",            "requires": ["gems.load_estaciones"] },
-  { "id": "reclamos",                        "requires": ["departamentos"] }
+  { "id": "reclamos",                        "requires": ["departamentos"] },
+  { "id": "sentinel.load_locations",         "requires": [] },
+  { "id": "sentinel.load_mediciones",        "requires": ["sentinel.load_locations"] }
 ]

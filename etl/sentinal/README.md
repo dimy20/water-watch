@@ -1,3 +1,0 @@
-# ETL - Sentinal
-
-Por implementar.

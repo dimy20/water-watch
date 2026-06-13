@@ -209,6 +209,18 @@ Esquema PostgreSQL gestionado con yoyo-migrations (`migrations/`).
 | `fecha_inicio` | TIMESTAMP | NOT NULL |
 | `fecha_fin` | TIMESTAMP | NOT NULL, CHECK `fecha_fin >= fecha_inicio` |
 
+**`sentinel_params`**
+
+| Columna | Tipo | Notas |
+|---|---|---|
+| `sentinel_param_id` | UUID | PK |
+| `location_id` | UUID | NOT NULL — referencia a `sentinel_locations` (MongoDB) |
+| `code` | VARCHAR(50) | NOT NULL — `'NDCI'` |
+| `fecha_inicio` | DATE | NOT NULL |
+| `fecha_fin` | DATE | NOT NULL, CHECK `fecha_inicio <= fecha_fin` |
+| `value` | FLOAT | NOT NULL |
+| `granularidad` | `granularidad_tipo` | NOT NULL |
+
 **`etl_file_state`**
 
 | Columna | Tipo | Notas |
@@ -238,7 +250,7 @@ Pipeline de carga por fuente. Cada módulo es independiente y tiene dedup determ
 | `erosion` (cuencas, suelos) | MongoDB + PostgreSQL | Completo |
 | `bacteriologia_ose` | PostgreSQL | Completo |
 | `reclamos` | PostgreSQL | Completo |
-| `sentinal` | — | Por implementar |
+| `sentinel` (NDCI Sentinel-2) | MongoDB + PostgreSQL | Completo |
 
 ### Scripts de diagnóstico
 

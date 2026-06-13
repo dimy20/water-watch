@@ -16,6 +16,8 @@ from etl.inumet.loading import load as load_inumet
 from etl.precipitaciones.load_estaciones import load as load_precipitaciones_estaciones
 from etl.precipitaciones.load_registros import load as load_precipitaciones_registros
 from etl.reclamos.load_reclamos import load as load_reclamos
+from etl.sentinel.load_locations import load as load_sentinel_locations
+from etl.sentinel.load_mediciones import load as load_sentinel_mediciones
 
 log = logging.getLogger(__name__)
 
@@ -47,6 +49,8 @@ TASKS: dict[str, list[Task]] = {
         lambda: load_gems_mediciones("remote_sensing"),
     ],
     "reclamos": [load_reclamos],
+    "sentinel.load_locations": [load_sentinel_locations],
+    "sentinel.load_mediciones": [load_sentinel_mediciones],
 }
 
 
@@ -55,7 +59,31 @@ def load_graph(path: Path = GRAPH_PATH) -> list[dict]:
         return json.load(file)
 
 
-def get_load_order(graph: list[dict]) -> list[str]:
+def get_required_nodes(graph: list[dict], target: str) -> set[str]:
+    nodes_by_id = {item["id"]: item for item in graph}
+    if target not in nodes_by_id:
+        raise RuntimeError(
+            f"No existe el módulo '{target}'. Opciones válidas: {', '.join(sorted(TASKS.keys()))}"
+        )
+
+    required: set[str] = set()
+
+    def visit(node_id: str) -> None:
+        if node_id in required:
+            return
+        required.add(node_id)
+        for dependency in nodes_by_id[node_id].get("requires", []):
+            visit(dependency)
+
+    visit(target)
+    return required
+
+
+def get_load_order(graph: list[dict], only: str | None = None) -> list[str]:
+    if only is not None:
+        required = get_required_nodes(graph, only)
+        graph = [item for item in graph if item["id"] in required]
+
     nodes = [item["id"] for item in graph]
     node_set = set(nodes)
 
@@ -93,9 +121,9 @@ def get_load_order(graph: list[dict]) -> list[str]:
     return order
 
 
-def run_pipeline() -> None:
+def run_pipeline(only: str | None = None) -> None:
     graph = load_graph()
-    order = get_load_order(graph)
+    order = get_load_order(graph, only=only)
 
     log.info("Orden de carga ETL: %s", " -> ".join(order))
     for node in order:
