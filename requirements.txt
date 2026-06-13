@@ -1,3 +1,4 @@
+psycopg2-binary
 psycopg
 psycopg[binary]
 pymongo[srv]
