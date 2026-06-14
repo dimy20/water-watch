@@ -1,5 +1,8 @@
 import streamlit as st
 import plotly.graph_objects as go
+import pydeck as pdk
+import pandas as pd
+from pathlib import Path
 
 from utils import postgres, mongo
 from queries import (
@@ -58,81 +61,210 @@ GEMS_PARAMS = {
 
 apply_styles()
 
+
+def loading_markup(text: str = "Cargando Water Watch...", subtext: str = "Preparando datos y visualizaciones") -> str:
+    dots = "".join("<span></span>" for _ in range(10))
+    return f"""
+    <div class="ww-loader-overlay" aria-live="polite" aria-busy="true">
+        <div class="ww-loader-panel">
+            <div class="ww-loader-dots">{dots}</div>
+            <div class="ww-loader-text">{text}</div>
+            <div class="ww-loader-subtext">{subtext}</div>
+        </div>
+    </div>
+    """
+
+
+initial_loader = st.empty()
+initial_loader.markdown(loading_markup(), unsafe_allow_html=True)
+
 pg = postgres()
 db = mongo()
+LOGO_PATH = Path(__file__).parent / "assets" / "waterwatch-logo.svg"
 
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=3600, show_spinner="Cargando Water Watch...")
 def _departamentos(_pg, _db):
     return get_departamentos_con_datos(_pg, _db)
 
 
-@st.cache_data(ttl=600)
+@st.cache_data(ttl=600, show_spinner="Cargando Water Watch...")
 def _calidad(_pg, departamento_id, anio_inicio, anio_fin, codigos):
     return get_evolucion_calidad(_pg, departamento_id, anio_inicio, anio_fin, codigos)
 
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=3600, show_spinner="Cargando Water Watch...")
 def _estaciones_depto(_db, departamento_id):
     return get_estaciones_por_departamento(_db, departamento_id)
 
 
-@st.cache_data(ttl=600)
+@st.cache_data(ttl=600, show_spinner="Cargando Water Watch...")
 def _gems_calidad(_pg, location_ids, anio_inicio, anio_fin, code):
     return get_gems_evolucion(_pg, list(location_ids), anio_inicio, anio_fin, code)
 
 
-@st.cache_data(ttl=3600)
-def _pct_por_depto(_pg, _db):
-    return get_pct_presencia_por_departamento(_pg, _db)
+@st.cache_data(ttl=3600, show_spinner="Cargando Water Watch...")
+def _pct_por_depto(_pg, _db, ose_code):
+    return get_pct_presencia_por_departamento(_pg, _db, ose_code)
 
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=3600, show_spinner="Cargando Water Watch...")
 def _gems_bacterio_nacional(_db, _pg, gems_code):
     return get_gems_bacterio_por_departamento(_db, _pg, gems_code)
 
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=3600, show_spinner="Cargando Water Watch...")
 def _geojson(_db):
     return get_departamentos_geojson(_db)
 
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=3600, show_spinner="Cargando Water Watch...")
+def _geojson_detallado(_db):
+    docs = list(_db["departamentos"].find({}, {"_id": 0, "nombre": 1, "geometry": 1}))
+    return {
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "type": "Feature",
+                "id": doc["nombre"],
+                "properties": {"nombre": doc["nombre"]},
+                "geometry": doc["geometry"],
+            }
+            for doc in docs
+        ],
+    }
+
+
+@st.cache_data(ttl=3600, show_spinner="Cargando Water Watch...")
+def _centroides_departamentos(_db):
+    from shapely.geometry import shape
+
+    docs = list(_db["departamentos"].find({}, {"_id": 0, "nombre": 1, "geometry": 1}))
+    rows = []
+    for doc in docs:
+        punto = shape(doc["geometry"]).representative_point()
+        rows.append({"nombre": doc["nombre"], "lon": punto.x, "lat": punto.y})
+    return rows
+
+
+@st.cache_data(ttl=3600, show_spinner="Cargando Water Watch...")
 def _hidrico_suelo(_db, _pg, tipo, anio_inicio, anio_fin):
     return get_hidrico_suelo_por_departamento(_db, _pg, tipo, anio_inicio, anio_fin)
 
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=3600, show_spinner="Cargando Water Watch...")
 def _riesgo(_db, _pg, anio_inicio, anio_fin):
     return get_riesgo_por_departamento(_db, _pg, anio_inicio, anio_fin)
 
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=3600, show_spinner="Cargando Water Watch...")
 def _correlacion(_pg, _db, anio_inicio, anio_fin):
     return get_correlacion_reclamos_calidad(_pg, _db, anio_inicio, anio_fin)
 
 
-@st.cache_data(ttl=600)
+@st.cache_data(ttl=600, show_spinner="Cargando Water Watch...")
 def _reclamos_trimestral(_pg, departamento_id, anio_inicio, anio_fin):
     return get_reclamos_trimestral(_pg, departamento_id, anio_inicio, anio_fin)
 
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=3600, show_spinner="Cargando Water Watch...")
 def _estaciones_chla(_pg, _db):
     return get_estaciones_con_chla(_pg, _db)
 
 
-@st.cache_data(ttl=600)
+@st.cache_data(ttl=600, show_spinner="Cargando Water Watch...")
 def _precip_vs_chla(_pg, _db, location_id, anio_inicio, anio_fin, lag_meses):
     return get_precipitacion_vs_chla(_pg, _db, location_id, anio_inicio, anio_fin, lag_meses)
 
 
+def _preparar_departamentos_mapa(df, centroides, value_col, value_label, unidad=""):
+    df_mapa = df.merge(pd.DataFrame(centroides), on="nombre", how="inner").copy()
+    if df_mapa.empty:
+        return df_mapa
+
+    df_mapa["ranking"] = df_mapa[value_col].rank(method="first", ascending=False).astype(int)
+    min_val = float(df_mapa[value_col].min())
+    max_val = float(df_mapa[value_col].max())
+    if max_val == min_val:
+        df_mapa["radio"] = 22000
+    else:
+        df_mapa["radio"] = 9000 + ((df_mapa[value_col] - min_val) / (max_val - min_val)) * 36000
+
+    sufijo = f" {unidad}" if unidad else ""
+    df_mapa["tooltip"] = (
+        "#" + df_mapa["ranking"].astype(str)
+        + " " + df_mapa["nombre"]
+        + "<br>" + value_label + ": " + df_mapa[value_col].map(lambda v: f"{v:.2f}") + sufijo
+    )
+    return df_mapa.sort_values("ranking")
+
+
+def _mapa_departamentos_puntos(df_mapa, value_col):
+    return pdk.Deck(
+        map_style="https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
+        views=[pdk.View(type="MapView", controller=False)],
+        initial_view_state=pdk.ViewState(
+            latitude=-32.8,
+            longitude=-56.0,
+            zoom=5.7,
+            pitch=0,
+        ),
+        layers=[
+            pdk.Layer(
+                "ScatterplotLayer",
+                data=df_mapa,
+                id=f"{value_col}_departamentos",
+                get_position="[lon, lat]",
+                get_radius="radio",
+                get_fill_color="[229, 57, 53, 170]",
+                get_line_color="[255, 255, 255, 210]",
+                line_width_min_pixels=1,
+                pickable=True,
+                stroked=True,
+                filled=True,
+            )
+        ],
+        tooltip={
+            "html": "<div style='font-size:14px;line-height:1.45'><b>{tooltip}</b></div>",
+            "style": {
+                "backgroundColor": "#26323f",
+                "color": "#ffffff",
+                "fontFamily": "Inter, sans-serif",
+                "padding": "10px 12px",
+            },
+        },
+    )
+
+
+def _grafico_ranking_departamentos(df_mapa, value_col, eje_titulo, unidad=""):
+    df_bar = df_mapa.sort_values(value_col, ascending=True)
+    hover_suffix = f" {unidad}" if unidad else ""
+    fig = go.Figure(go.Bar(
+        x=df_bar[value_col],
+        y=df_bar["nombre"],
+        orientation="h",
+        marker_color="#e53935",
+        hovertemplate="%{y}: %{x:.2f}" + hover_suffix + "<extra></extra>",
+    ))
+    fig.update_layout(
+        xaxis_title=eje_titulo,
+        yaxis_title=None,
+        height=460,
+        margin=dict(l=120, r=35, t=10, b=40),
+        showlegend=False,
+    )
+    return fig
+
+
 df_deptos = _departamentos(pg, db)
+initial_loader.empty()
 
 depto_default = st.session_state.get("departamento_mapa", df_deptos["nombre"].iloc[0])
 idx = df_deptos["nombre"].tolist().index(depto_default) if depto_default in df_deptos["nombre"].values else 0
 
 with st.sidebar:
+    st.image(str(LOGO_PATH), use_container_width=True)
+    st.markdown("<div class='ww-filter-kicker'>Panel de control</div>", unsafe_allow_html=True)
     st.header("Filtros")
 
     nombre_depto = st.selectbox(
@@ -357,32 +489,48 @@ with tab_resumen:
         options=list(BACTERIO_PARAMS.keys()),
         key="resumen_param",
     )
+    ose_code_resumen = BACTERIO_PARAMS[param_resumen]["ose_code"]
     gems_code_resumen = BACTERIO_PARAMS[param_resumen]["gems_code"]
     unidad_resumen = BACTERIO_PARAMS[param_resumen]["unidad"]
+    centroides = _centroides_departamentos(db)
 
     # ── OSE (arriba) ─────────────────────────────────────────────────────────
 
     st.markdown("#### Bacteriología OSE — % muestras con presencia por departamento")
 
-    df_resumen = _pct_por_depto(pg, db)
-    df_resumen = df_resumen.sort_values("pct_presencia", ascending=True)
+    if ose_code_resumen is None:
+        st.info(f"OSE no registra {param_resumen}.")
+    else:
+        df_resumen = _pct_por_depto(pg, db, ose_code_resumen)
+        df_resumen = df_resumen.sort_values("pct_presencia", ascending=True)
 
-    fig_resumen = go.Figure(go.Bar(
-        x=df_resumen["pct_presencia"],
-        y=df_resumen["nombre"],
-        orientation="h",
-        marker_color="#e53935",
-        hovertemplate="%{y}: %{x:.1f}%<extra></extra>",
-    ))
-    fig_resumen.update_layout(
-        xaxis_title="% muestras con contaminación",
-        xaxis=dict(ticksuffix="%"),
-        yaxis_title=None,
-        height=550,
-        margin=dict(l=140),
-    )
-    st.plotly_chart(fig_resumen, use_container_width=True)
-    st.caption("Datos OSE 2017–2025. Incluye Coliformes Totales y E. coli.")
+        if df_resumen.empty:
+            st.info(f"No hay datos OSE de {param_resumen}.")
+        else:
+            df_ose_mapa = _preparar_departamentos_mapa(
+                df_resumen,
+                centroides,
+                "pct_presencia",
+                "% muestras con presencia",
+                "%",
+            )
+            col_mapa, col_ranking = st.columns([1.2, 1])
+            with col_mapa:
+                st.pydeck_chart(
+                    _mapa_departamentos_puntos(df_ose_mapa, "pct_presencia"),
+                    height=460,
+                )
+            with col_ranking:
+                st.plotly_chart(
+                    _grafico_ranking_departamentos(
+                        df_ose_mapa,
+                        "pct_presencia",
+                        "% muestras con presencia",
+                        "%",
+                    ),
+                    use_container_width=True,
+                )
+            st.caption(f"OSE · {param_resumen}. El tamaño del punto representa el porcentaje de muestras con presencia.")
 
     st.divider()
 
@@ -396,22 +544,30 @@ with tab_resumen:
         st.info(f"No hay datos GEMS de {param_resumen} para ningún departamento.")
     else:
         df_gems_nac = df_gems_nac.sort_values("valor_medio", ascending=True)
-
-        fig_gems_nac = go.Figure(go.Bar(
-            x=df_gems_nac["valor_medio"],
-            y=df_gems_nac["nombre"],
-            orientation="h",
-            marker_color="#e53935",
-            hovertemplate="%{y}: %{x:.2f} " + unidad_resumen + "<extra></extra>",
-        ))
-        fig_gems_nac.update_layout(
-            xaxis_title=f"Promedio {param_resumen} ({unidad_resumen})",
-            yaxis_title=None,
-            height=550,
-            margin=dict(l=140),
+        df_gems_mapa = _preparar_departamentos_mapa(
+            df_gems_nac,
+            centroides,
+            "valor_medio",
+            "Promedio",
+            unidad_resumen,
         )
-        st.plotly_chart(fig_gems_nac, use_container_width=True)
-        st.caption(f"Promedio histórico por departamento según estaciones GEMS. {len(df_gems_nac)} departamentos con datos.")
+        col_mapa, col_ranking = st.columns([1.2, 1])
+        with col_mapa:
+            st.pydeck_chart(
+                _mapa_departamentos_puntos(df_gems_mapa, "valor_medio"),
+                height=460,
+            )
+        with col_ranking:
+            st.plotly_chart(
+                _grafico_ranking_departamentos(
+                    df_gems_mapa,
+                    "valor_medio",
+                    f"Promedio {param_resumen} ({unidad_resumen})",
+                    unidad_resumen,
+                ),
+                use_container_width=True,
+            )
+        st.caption(f"GEMS · Promedio histórico por departamento según estaciones. {len(df_gems_nac)} departamentos con datos.")
 
 # ── TAB ESTADO HÍDRICO DEL SUELO ─────────────────────────────────────────────
 
@@ -427,49 +583,127 @@ with tab_suelo:
     if df_suelo.empty:
         st.info(f"No hay datos de {tipo_suelo} para el período {anio_inicio}–{anio_fin}.")
     else:
+        df_suelo = df_suelo.copy()
+        df_suelo["ranking"] = df_suelo["valor_medio"].rank(method="first", ascending=False).astype(int)
+
         col1, col2, col3 = st.columns(3)
         col1.metric("Promedio nacional", f"{df_suelo['valor_medio'].mean():.2f}")
         col2.metric("Departamento mínimo", f"{df_suelo['valor_medio'].min():.2f}")
         col3.metric("Departamento máximo", f"{df_suelo['valor_medio'].max():.2f}")
 
-        geojson = _geojson(db)
+        geojson = _geojson_detallado(db)
+        df_suelo_map = df_suelo.sort_values("valor_medio", ascending=False)
+        customdata_suelo = df_suelo_map[["ranking", "valor_medio"]].values
 
         fig_suelo = go.Figure(go.Choropleth(
             geojson=geojson,
-            locations=df_suelo["nombre"].tolist(),
-            z=df_suelo["valor_medio"].round(3).tolist(),
+            locations=df_suelo_map["nombre"].tolist(),
+            z=df_suelo_map["valor_medio"].round(3).tolist(),
             featureidkey="properties.nombre",
-            colorscale="Blues",
-            zmin=df_suelo["valor_medio"].min(),
-            zmax=df_suelo["valor_medio"].max(),
-            marker_line_color="white",
-            marker_line_width=1.5,
-            colorbar_title=tipo_suelo,
-            hovertemplate="<b>%{location}</b><br>%{z:.2f}<extra></extra>",
+            colorscale=[
+                [0.0, "#dbeafe"],
+                [0.25, "#93c5fd"],
+                [0.5, "#3b82f6"],
+                [0.75, "#1d4ed8"],
+                [1.0, "#0f3f87"],
+            ],
+            zmin=df_suelo_map["valor_medio"].min(),
+            zmax=df_suelo_map["valor_medio"].max(),
+            marker_line_color="rgba(248, 250, 252, 0.92)",
+            marker_line_width=1.15,
+            colorbar=dict(
+                title=dict(text=tipo_suelo, font=dict(color="#e5edf7")),
+                thickness=14,
+                len=0.72,
+                outlinewidth=0,
+                tickfont=dict(color="#cbd5e1"),
+            ),
+            customdata=customdata_suelo,
+            hovertemplate=(
+                "<b>%{location}</b><br>"
+                "Ranking: %{customdata[0]}<br>"
+                f"{tipo_suelo}: " + "%{customdata[1]:.2f}"
+                "<extra></extra>"
+            ),
         ))
-        fig_suelo.update_geos(fitbounds="locations", visible=False)
-        fig_suelo.update_layout(
-            title=f"{tipo_suelo} — {TIPOS[tipo_suelo]} · {anio_inicio}–{anio_fin}",
-            margin={"r": 0, "t": 40, "l": 0, "b": 0},
-            height=550,
+        fig_suelo.update_geos(
+            fitbounds="locations",
+            visible=False,
+            projection_type="mercator",
+            bgcolor="#0b1117",
+            landcolor="#0b1117",
+            lakecolor="#26323f",
+            showcountries=False,
+            showcoastlines=False,
+            showland=False,
+            showlakes=False,
         )
-        st.plotly_chart(fig_suelo, use_container_width=True)
+        fig_suelo.update_layout(
+            margin={"r": 0, "t": 0, "l": 0, "b": 0},
+            height=560,
+            paper_bgcolor="#0b1117",
+            plot_bgcolor="#0b1117",
+            dragmode=False,
+        )
 
         df_bar = df_suelo.sort_values("valor_medio", ascending=True)
         fig_bar = go.Figure(go.Bar(
             x=df_bar["valor_medio"],
             y=df_bar["nombre"],
             orientation="h",
-            marker_color="#1a73e8",
-            hovertemplate="%{y}: %{x:.2f}<extra></extra>",
+            marker=dict(
+                color=df_bar["valor_medio"],
+                colorscale=[
+                    [0.0, "#bfdbfe"],
+                    [0.5, "#3b82f6"],
+                    [1.0, "#0f3f87"],
+                ],
+                line=dict(color="rgba(255,255,255,0.85)", width=1),
+            ),
+            hovertemplate="<b>%{y}</b><br>" + tipo_suelo + ": %{x:.2f}<extra></extra>",
         ))
         fig_bar.update_layout(
             xaxis_title=f"Promedio {tipo_suelo}",
             yaxis_title=None,
-            height=500,
-            margin=dict(l=140),
+            height=560,
+            margin=dict(l=125, r=36, t=54, b=40),
+            title=dict(
+                text="Ranking departamental",
+                x=0.02,
+                xanchor="left",
+                font=dict(size=18, color="#17192f"),
+            ),
+            showlegend=False,
+            paper_bgcolor="#ffffff",
+            plot_bgcolor="#ffffff",
+            xaxis=dict(showgrid=True, gridcolor="rgba(15, 63, 135, 0.08)"),
         )
-        st.plotly_chart(fig_bar, use_container_width=True)
+
+        col_mapa, col_ranking = st.columns([1.28, 1])
+        with col_mapa:
+            st.markdown(f"#### {tipo_suelo} — {TIPOS[tipo_suelo]} · {anio_inicio}–{anio_fin}")
+            st.plotly_chart(
+                fig_suelo,
+                use_container_width=True,
+                config={
+                    "displayModeBar": False,
+                    "scrollZoom": False,
+                    "doubleClick": False,
+                    "responsive": True,
+                },
+            )
+        with col_ranking:
+            st.plotly_chart(
+                fig_bar,
+                use_container_width=True,
+                config={
+                    "displayModeBar": False,
+                    "scrollZoom": False,
+                    "doubleClick": False,
+                    "responsive": True,
+                },
+            )
+
         st.caption(f"Promedio de puntos de grilla por departamento. {len(df_suelo)} departamentos con datos.")
 
 # ── TAB INDICADOR DE RIESGO ───────────────────────────────────────────────────

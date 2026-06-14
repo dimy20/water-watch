@@ -30,20 +30,23 @@ def get_departamentos_geojson(mongo_db) -> dict:
     return {"type": "FeatureCollection", "features": features}
 
 
-def get_pct_presencia_por_departamento(pg_conn, mongo_db) -> pd.DataFrame:
-    sql = """
+def get_pct_presencia_por_departamento(pg_conn, mongo_db, ose_code: str | None = None) -> pd.DataFrame:
+    filtro_code = "WHERE code = %s" if ose_code is not None else ""
+    params = (ose_code,) if ose_code is not None else ()
+    sql = f"""
         SELECT
             departamento_id,
             SUM(CASE WHEN value_cat = 'Presencia' THEN total ELSE 0 END) * 100.0 / SUM(total) AS pct_presencia
         FROM (
             SELECT departamento_id, value_cat, COUNT(*) AS total
             FROM oseparam
+            {filtro_code}
             GROUP BY departamento_id, value_cat
         ) sub
         GROUP BY departamento_id
     """
     cur = pg_conn.cursor()
-    cur.execute(sql)
+    cur.execute(sql, params)
     rows = cur.fetchall()
     df = pd.DataFrame(rows, columns=["departamento_id", "pct_presencia"])
 

@@ -1,4 +1,5 @@
 import pandas as pd
+from shapely.geometry import shape
 
 
 TIPOS = {
@@ -20,6 +21,22 @@ def get_hidrico_suelo_por_departamento(
             {"_id": 1},
         )
         ids = [p["_id"] for p in puntos]
+        if not ids:
+            punto_interior = shape(depto["geometry"]).representative_point()
+            cercano = mongo_db["puntos_grilla"].find_one(
+                {
+                    "location": {
+                        "$nearSphere": {
+                            "$geometry": {
+                                "type": "Point",
+                                "coordinates": [punto_interior.x, punto_interior.y],
+                            }
+                        }
+                    }
+                },
+                {"_id": 1},
+            )
+            ids = [cercano["_id"]] if cercano else []
         if ids:
             point_map[depto["nombre"]] = ids
 
