@@ -195,6 +195,16 @@ def _punto_grilla_pad(_db, location_id):
     return get_punto_grilla_coords(_db, punto_id)
 
 
+@st.cache_data(ttl=600, show_spinner="Cargando Water Watch...")
+def _precip_vs_ndci(_pg, _db, location_id, anio_inicio, anio_fin, lag_meses):
+    return get_precipitacion_vs_ndci(_pg, _db, location_id, anio_inicio, anio_fin, lag_meses)
+
+
+@st.cache_data(ttl=600, show_spinner="Cargando Water Watch...")
+def _correlacion_lag(_pg, _db, location_id, anio_inicio, anio_fin):
+    return get_correlacion_por_lag(_pg, _db, location_id, anio_inicio, anio_fin)
+
+
 def _preparar_departamentos_mapa(df, centroides, value_col, value_label, unidad=""):
     df_mapa = df.merge(pd.DataFrame(centroides), on="nombre", how="inner").copy()
     if df_mapa.empty:
