@@ -264,6 +264,105 @@ def _mapa_departamentos_puntos(df_mapa, value_col):
     )
 
 
+def _interpolar_color(valor, min_val, max_val):
+    stops = [
+        (0.0, (219, 234, 254)),
+        (0.25, (147, 197, 253)),
+        (0.5, (59, 130, 246)),
+        (0.75, (29, 78, 216)),
+        (1.0, (15, 63, 135)),
+    ]
+    if max_val == min_val:
+        return [59, 130, 246, 215]
+
+    t = (float(valor) - min_val) / (max_val - min_val)
+    t = max(0.0, min(1.0, t))
+    for idx in range(len(stops) - 1):
+        left_t, left_color = stops[idx]
+        right_t, right_color = stops[idx + 1]
+        if left_t <= t <= right_t:
+            span = right_t - left_t
+            local_t = 0 if span == 0 else (t - left_t) / span
+            rgb = [
+                round(left_color[channel] + (right_color[channel] - left_color[channel]) * local_t)
+                for channel in range(3)
+            ]
+            return rgb + [220]
+    return [15, 63, 135, 220]
+
+
+def _geojson_departamentos_calor(geojson, df_mapa, value_col, value_label):
+    valores = df_mapa.set_index("nombre").to_dict("index")
+    min_val = float(df_mapa[value_col].min())
+    max_val = float(df_mapa[value_col].max())
+    features = []
+
+    for feature in geojson["features"]:
+        nombre = feature["properties"]["nombre"]
+        dato = valores.get(nombre)
+        props = dict(feature["properties"])
+        if dato is None:
+            props.update({
+                "valor": None,
+                "ranking": None,
+                "fill_color": [31, 41, 55, 90],
+                "tooltip": f"{nombre}<br>Sin datos",
+            })
+        else:
+            valor = float(dato[value_col])
+            ranking = int(dato["ranking"])
+            props.update({
+                "valor": valor,
+                "ranking": ranking,
+                "fill_color": _interpolar_color(valor, min_val, max_val),
+                "tooltip": f"#{ranking} {nombre}<br>{value_label}: {valor:.2f}",
+            })
+
+        features.append({
+            "type": "Feature",
+            "id": feature.get("id", nombre),
+            "properties": props,
+            "geometry": feature["geometry"],
+        })
+
+    return {"type": "FeatureCollection", "features": features}
+
+
+def _mapa_departamentos_calor(geojson_calor):
+    return pdk.Deck(
+        map_style=None,
+        views=[pdk.View(type="MapView", controller=False)],
+        initial_view_state=pdk.ViewState(
+            latitude=-32.8,
+            longitude=-56.0,
+            zoom=5.7,
+            pitch=0,
+        ),
+        layers=[
+            pdk.Layer(
+                "GeoJsonLayer",
+                data=geojson_calor,
+                id="suelo_departamentos_calor",
+                pickable=True,
+                stroked=True,
+                filled=True,
+                get_fill_color="properties.fill_color",
+                get_line_color=[248, 250, 252, 225],
+                line_width_min_pixels=1.4,
+            )
+        ],
+        tooltip={
+            "html": "<div style='font-size:14px;line-height:1.45'><b>{tooltip}</b></div>",
+            "style": {
+                "backgroundColor": "#26323f",
+                "color": "#ffffff",
+                "fontFamily": "Inter, sans-serif",
+                "padding": "10px 12px",
+            },
+        },
+    )
+
+
 def _grafico_ranking_departamentos(df_mapa, value_col, eje_titulo, unidad=""):
     df_bar = df_mapa.sort_values(value_col, ascending=True)
     hover_suffix = f" {unidad}" if unidad else ""
@@ -621,58 +720,7 @@ with tab_suelo:
 
         geojson = _geojson_detallado(db)
         df_suelo_map = df_suelo.sort_values("valor_medio", ascending=False)
-        customdata_suelo = df_suelo_map[["ranking", "valor_medio"]].values
-
-        fig_suelo = go.Figure(go.Choropleth(
-            geojson=geojson,
-            locations=df_suelo_map["nombre"].tolist(),
-            z=df_suelo_map["valor_medio"].round(3).tolist(),
-            featureidkey="properties.nombre",
-            colorscale=[
-                [0.0, "#dbeafe"],
-                [0.25, "#93c5fd"],
-                [0.5, "#3b82f6"],
-                [0.75, "#1d4ed8"],
-                [1.0, "#0f3f87"],
-            ],
-            zmin=df_suelo_map["valor_medio"].min(),
-            zmax=df_suelo_map["valor_medio"].max(),
-            marker_line_color="rgba(248, 250, 252, 0.92)",
-            marker_line_width=1.15,
-            colorbar=dict(
-                title=dict(text=tipo_suelo, font=dict(color="#e5edf7")),
-                thickness=14,
-                len=0.72,
-                outlinewidth=0,
-                tickfont=dict(color="#cbd5e1"),
-            ),
-            customdata=customdata_suelo,
-            hovertemplate=(
-                "<b>%{location}</b><br>"
-                "Ranking: %{customdata[0]}<br>"
-                f"{tipo_suelo}: " + "%{customdata[1]:.2f}"
-                "<extra></extra>"
-            ),
-        ))
-        fig_suelo.update_geos(
-            fitbounds="locations",
-            visible=False,
-            projection_type="mercator",
-            bgcolor="#0b1117",
-            landcolor="#0b1117",
-            lakecolor="#26323f",
-            showcountries=False,
-            showcoastlines=False,
-            showland=False,
-            showlakes=False,
-        )
-        fig_suelo.update_layout(
-            margin={"r": 0, "t": 0, "l": 0, "b": 0},
-            height=560,
-            paper_bgcolor="#0b1117",
-            plot_bgcolor="#0b1117",
-            dragmode=False,
-        )
+        geojson_suelo = _geojson_departamentos_calor(geojson, df_suelo_map, "valor_medio", tipo_suelo)
 
         df_bar = df_suelo.sort_values("valor_medio", ascending=True)
         fig_bar = go.Figure(go.Bar(
@@ -710,15 +758,10 @@ with tab_suelo:
         col_mapa, col_ranking = st.columns([1.28, 1])
         with col_mapa:
             st.markdown(f"#### {tipo_suelo} — {TIPOS[tipo_suelo]} · {anio_inicio}–{anio_fin}")
-            st.plotly_chart(
-                fig_suelo,
+            st.pydeck_chart(
+                _mapa_departamentos_calor(geojson_suelo),
                 use_container_width=True,
-                config={
-                    "displayModeBar": False,
-                    "scrollZoom": False,
-                    "doubleClick": False,
-                    "responsive": True,
-                },
+                height=560,
             )
         with col_ranking:
             st.plotly_chart(
@@ -737,42 +780,11 @@ with tab_suelo:
 # ── TAB INDICADOR DE RIESGO ───────────────────────────────────────────────────
 
 with tab_riesgo:
-    st.markdown("#### Indicador de Riesgo Combinado")
-
-    with st.expander("Metodología", expanded=True):
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            st.markdown(
-                "**Contaminación bacteriológica**  \n"
-                "OSE (% presencia coliformes totales) + GEMS (TOTCOLI, MPN/100ml).  \n"
-                "Activa si supera el percentil 66 del período."
-            )
-        with c2:
-            st.markdown(
-                "**Precipitación**  \n"
-                "Pluviometría media diaria (mm/día) — estaciones INIA.  \n"
-                "Activa si supera el percentil 66 del período."
-            )
-        with c3:
-            st.markdown(
-                "**Índice de Humedad del Balance (IBH)**  \n"
-                "Grillas INIA-GRAS, cobertura nacional.  \n"
-                "Activa si está por debajo del percentil 33 del período."
-            )
-
-        st.divider()
-        st.markdown(
-            "| Score | Interpretación |\n"
-            "|---|---|\n"
-            "| 0 | Sin condiciones adversas |\n"
-            "| 1 | Una condición supera el umbral |\n"
-            "| 2 | Dos condiciones coinciden |\n"
-            "| 3 | Las tres condiciones coinciden — riesgo elevado |"
-        )
-
+    st.markdown("#### Indicador de Riesgo")
     st.caption(
-        "La precipitación cubre solo los 5 departamentos con estación INIA (score máximo 2 en los demás). "
-        "Los umbrales son relativos al período seleccionado."
+        "Resume tres señales del período seleccionado: contaminación bacteriológica, "
+        "precipitación elevada y menor humedad del suelo. El score indica cuántas señales "
+        "están activas en cada departamento."
     )
 
     df_riesgo = _riesgo(db, pg, anio_inicio, anio_fin)
@@ -780,16 +792,39 @@ with tab_riesgo:
     if df_riesgo.empty:
         st.info("No hay datos suficientes para calcular el indicador de riesgo en el período seleccionado.")
     else:
+        riesgo_labels = {
+            0: "Sin señales",
+            1: "Bajo",
+            2: "Medio",
+            3: "Alto",
+        }
+        riesgo_colors = {
+            0: "#dbeafe",
+            1: "#93c5fd",
+            2: "#f59e0b",
+            3: "#dc2626",
+        }
+
         col1, col2, col3, col4 = st.columns(4)
-        col1.metric("Score 0 (sin riesgo)", int((df_riesgo["score"] == 0).sum()))
-        col2.metric("Score 1", int((df_riesgo["score"] == 1).sum()))
-        col3.metric("Score 2", int((df_riesgo["score"] == 2).sum()))
-        col4.metric("Score 3 (riesgo total)", int((df_riesgo["score"] == 3).sum()))
+        col1.metric("Sin señales", int((df_riesgo["score"] == 0).sum()))
+        col2.metric("Riesgo bajo", int((df_riesgo["score"] == 1).sum()))
+        col3.metric("Riesgo medio", int((df_riesgo["score"] == 2).sum()))
+        col4.metric("Riesgo alto", int((df_riesgo["score"] == 3).sum()))
 
         geojson = _geojson(db)
 
         def _fmt(val, fmt, suffix=""):
             return f"{val:{fmt}}{suffix}" if val == val else "—"  # nan check
+
+        def _senales(row):
+            activas = []
+            if row["condicion_contam"]:
+                activas.append("contaminación")
+            if row["condicion_precip"]:
+                activas.append("precipitación")
+            if row["condicion_suelo"]:
+                activas.append("suelo")
+            return ", ".join(activas) if activas else "sin señales activas"
 
         df_riesgo["_tip_ose"] = df_riesgo["pct_ose"].apply(lambda x: _fmt(x, ".1f", "%"))
         df_riesgo["_tip_gems"] = df_riesgo["val_gems"].apply(lambda x: _fmt(x, ".2f", " MPN/100ml"))
@@ -797,13 +832,11 @@ with tab_riesgo:
             lambda x: _fmt(x, ".1f", " mm/día") if x == x else "sin datos"
         )
         df_riesgo["_tip_ibh"] = df_riesgo["val_suelo"].apply(lambda x: _fmt(x, ".2f"))
-        df_riesgo["_tip_c"] = df_riesgo["condicion_contam"].map({True: "⚠", False: ""})
-        df_riesgo["_tip_p"] = df_riesgo["condicion_precip"].map({True: "⚠", False: ""})
-        df_riesgo["_tip_s"] = df_riesgo["condicion_suelo"].map({True: "⚠", False: ""})
+        df_riesgo["_nivel"] = df_riesgo["score"].map(riesgo_labels)
+        df_riesgo["_senales"] = df_riesgo.apply(_senales, axis=1)
 
         customdata = df_riesgo[[
-            "_tip_ose", "_tip_gems", "_tip_precip", "_tip_ibh",
-            "_tip_c", "_tip_p", "_tip_s",
+            "_nivel", "_senales", "_tip_ose", "_tip_gems", "_tip_precip", "_tip_ibh",
         ]].values
 
         fig_riesgo = go.Figure(go.Choropleth(
@@ -812,54 +845,58 @@ with tab_riesgo:
             z=df_riesgo["score"].tolist(),
             featureidkey="properties.nombre",
             colorscale=[
-                [0.0,  "#2ca02c"],
-                [0.33, "#ffdd57"],
-                [0.67, "#ff7f0e"],
-                [1.0,  "#d62728"],
+                [0.0, riesgo_colors[0]],
+                [0.33, riesgo_colors[1]],
+                [0.67, riesgo_colors[2]],
+                [1.0, riesgo_colors[3]],
             ],
             zmin=0,
             zmax=3,
             marker_line_color="white",
             marker_line_width=1.5,
             colorbar=dict(
-                title="Score",
+                title="Riesgo",
                 tickvals=[0, 1, 2, 3],
-                ticktext=["0 — Sin riesgo", "1 — Bajo", "2 — Medio", "3 — Alto"],
+                ticktext=["0", "1", "2", "3"],
+                thickness=14,
+                outlinewidth=0,
             ),
             customdata=customdata,
             hovertemplate=(
                 "<b>%{location}</b><br>"
-                "Score: <b>%{z}/3</b><br>"
-                "Contam. OSE: %{customdata[0]} %{customdata[4]}<br>"
-                "Contam. GEMS: %{customdata[1]} %{customdata[5]}<br>"
-                "Precipitación: %{customdata[2]} %{customdata[6]}<br>"
-                "IBH: %{customdata[3]}"
+                "Nivel: <b>%{customdata[0]}</b> (%{z}/3)<br>"
+                "Señales: %{customdata[1]}<br>"
+                "OSE: %{customdata[2]}<br>"
+                "GEMS: %{customdata[3]}<br>"
+                "Precipitación: %{customdata[4]}<br>"
+                "IBH: %{customdata[5]}"
                 "<extra></extra>"
             ),
         ))
         fig_riesgo.update_geos(fitbounds="locations", visible=False)
         fig_riesgo.update_layout(
-            title=f"Indicador de Riesgo · {anio_inicio}–{anio_fin}",
-            margin={"r": 0, "t": 40, "l": 0, "b": 0},
+            title=dict(
+                text=f"Riesgo departamental · {anio_inicio}–{anio_fin}",
+                x=0.02,
+                xanchor="left",
+                font=dict(size=18, color="#17192f"),
+            ),
+            margin={"r": 0, "t": 52, "l": 0, "b": 0},
             height=550,
+            paper_bgcolor="#ffffff",
+            plot_bgcolor="#ffffff",
         )
         st.plotly_chart(fig_riesgo, use_container_width=True)
 
-        with st.expander("Ver datos por departamento"):
+        with st.expander("Detalle por departamento"):
             df_tabla_riesgo = df_riesgo[[
-                "nombre", "score", "pct_ose", "val_gems", "val_precip", "val_suelo",
-                "condicion_contam", "condicion_precip", "condicion_suelo",
+                "nombre", "_nivel", "score", "_senales", "pct_ose", "val_gems", "val_precip", "val_suelo",
             ]].copy()
             df_tabla_riesgo.columns = [
-                "Departamento", "Score",
-                "Contam. OSE (%)", "Contam. GEMS (MPN/100ml)",
-                "Precipitación (mm/día)", "IBH",
-                "⚠ Contam.", "⚠ Precip.", "⚠ Suelo",
+                "Departamento", "Nivel", "Score", "Señales activas",
+                "OSE (%)", "GEMS (MPN/100ml)", "Precipitación (mm/día)", "IBH",
             ]
-            df_tabla_riesgo["⚠ Contam."] = df_tabla_riesgo["⚠ Contam."].map({True: "✓", False: "✗"})
-            df_tabla_riesgo["⚠ Precip."] = df_tabla_riesgo["⚠ Precip."].map({True: "✓", False: "✗"})
-            df_tabla_riesgo["⚠ Suelo"] = df_tabla_riesgo["⚠ Suelo"].map({True: "✓", False: "✗"})
-            for col in ["Contam. OSE (%)", "Contam. GEMS (MPN/100ml)", "Precipitación (mm/día)", "IBH"]:
+            for col in ["OSE (%)", "GEMS (MPN/100ml)", "Precipitación (mm/día)", "IBH"]:
                 df_tabla_riesgo[col] = df_tabla_riesgo[col].apply(
                     lambda x: round(x, 2) if x == x else None
                 )
@@ -867,6 +904,15 @@ with tab_riesgo:
                 df_tabla_riesgo.sort_values("Score", ascending=False).reset_index(drop=True),
                 use_container_width=True,
                 hide_index=True,
+            )
+
+        with st.expander("Criterio de cálculo"):
+            st.markdown(
+                "Cada señal suma 1 punto. La contaminación combina OSE y GEMS y se activa por encima "
+                "del percentil 66 del período; la precipitación se activa por encima del percentil 66; "
+                "la señal de suelo se activa cuando el IBH queda por debajo del percentil 33. "
+                "La precipitación solo cubre departamentos con estación INIA, por lo que en los demás "
+                "el score máximo observable puede ser menor."
             )
 
 # ── TAB RECLAMOS VS CALIDAD ───────────────────────────────────────────────────
