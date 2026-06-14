@@ -9,19 +9,21 @@ from etl.sentinel.params import (
     AGUA,
     DATETIME_RANGE,
     MAX_CLOUD_COVER,
+    INDICES,
 )
 from etl.sentinel.geo import make_bounds
 from etl.sentinel.logger import log
 
-# NDCI = (rededge1 - red) / (rededge1 + red); fuera de la mascara de agua los
-# pixeles son NaN y algunos pixeles de agua tienen denominador 0, lo que produce
-# warnings de numpy/dask inofensivos (el resultado NaN/inf se filtra mas abajo).
+# Fuera de la mascara de agua los pixeles son NaN y algunos pixeles de agua
+# tienen denominador 0 (p.ej. en NDCI o NDTI), lo que produce warnings de
+# numpy/dask inofensivos (el resultado NaN/inf se filtra mas abajo).
 warnings.filterwarnings("ignore", message="divide by zero encountered in divide")
 warnings.filterwarnings("ignore", message="invalid value encountered in divide")
 
 catalog = Client.open(EARTH_SEARCH_URL)
 
-def compute_ndci_series(coords: list, width: float, resolution: int) -> list[tuple]:
+def compute_index_series(coords: list, width: float, resolution: int, code: str) -> list[tuple]:
+    cfg = INDICES[code]
     bounds = make_bounds(coords, dist=width)
 
     items = catalog.search(
@@ -39,18 +41,17 @@ def compute_ndci_series(coords: list, width: float, resolution: int) -> list[tup
     stack = stackstac.stack(
         items,
         epsg=32721,
-        assets=["red", "rededge1", "scl"],
+        assets=[*cfg["bands"], "scl"],
         resolution=resolution,
         bounds_latlon=bounds,
     )
 
     stack = stack.where(stack.sel(band="scl") == AGUA)
-    red = stack.sel(band="red")
-    rededge1 = stack.sel(band="rededge1")
-    ndci = (rededge1 - red) / (rededge1 + red)
+    bands = {band: stack.sel(band=band) for band in cfg["bands"]}
+    indice = cfg["formula"](bands)
 
-    log.info("  calculando NDCI sobre las escenas (puede tardar varios minutos)...")
-    serie = ndci.median(dim=["x", "y"], skipna=True).compute()
+    log.info(f"  calculando {code} sobre las escenas (puede tardar varios minutos)...")
+    serie = indice.median(dim=["x", "y"], skipna=True).compute()
 
     result = []
 
@@ -60,6 +61,6 @@ def compute_ndci_series(coords: list, width: float, resolution: int) -> list[tup
         fecha = pd.Timestamp(time).date()
         result.append((fecha, float(value)))
 
-    log.info(f"  {len(result)} fechas con NDCI válido de {len(items)} escenas")
+    log.info(f"  {len(result)} fechas con {code} válido de {len(items)} escenas")
 
     return result

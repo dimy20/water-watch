@@ -2,8 +2,8 @@ import time
 import pandas as pd
 from db import get_mongo_conn, get_postgres_conn
 from etl.utils import create_id
-from etl.sentinel.params import DATA_FILE, CODE_NDCI
-from etl.sentinel.pre_processing import compute_ndci_series
+from etl.sentinel.params import DATA_FILE
+from etl.sentinel.pre_processing import compute_index_series
 from etl.sentinel.logger import log
 
 INSERT_QUERY = """INSERT INTO sentinel_params(
@@ -12,7 +12,7 @@ INSERT_QUERY = """INSERT INTO sentinel_params(
 ) VALUES (%s,%s,%s,%s,%s,%s,%s)
 ON CONFLICT (sentinel_param_id) DO NOTHING;"""
 
-def load():
+def load(code: str):
     start = time.monotonic()
     mongo = get_mongo_conn()
     df = pd.read_csv(DATA_FILE)
@@ -26,7 +26,7 @@ def load():
 
     sql_conn = get_postgres_conn()
     with sql_conn.cursor() as cur:
-        cur.execute("SELECT DISTINCT location_id FROM sentinel_params WHERE code = %s", (CODE_NDCI,))
+        cur.execute("SELECT DISTINCT location_id FROM sentinel_params WHERE code = %s", (code,))
         ya_cargados = {location_id for (location_id,) in cur.fetchall()}
     sql_conn.close()
 
@@ -43,13 +43,13 @@ def load():
             continue
 
         if location_id in ya_cargados:
-            log.info(f"[{i}/{total}] {nombre}: ya tiene mediciones NDCI cargadas, se omite")
+            log.info(f"[{i}/{total}] {nombre}: ya tiene mediciones {code} cargadas, se omite")
             continue
 
         log.info(f"[{i}/{total}] {nombre}: width={row['Width']} resolution={row['Resolution']}")
-        serie = compute_ndci_series([row["Latitud"], row["Longitud"]], row["Width"], row["Resolution"])
+        serie = compute_index_series([row["Latitud"], row["Longitud"]], row["Width"], row["Resolution"], code)
         rows = [
-            (create_id(location_id, CODE_NDCI, fecha, fecha, valor, "DIA"), location_id, CODE_NDCI, fecha, fecha, valor, "DIA")
+            (create_id(location_id, code, fecha, fecha, valor, "DIA"), location_id, code, fecha, fecha, valor, "DIA")
             for fecha, valor in serie
         ]
 
@@ -64,9 +64,9 @@ def load():
             sql_conn.commit()
         except Exception as e:
             sql_conn.rollback()
-            log.error(f"[{i}/{total}] {nombre}: error insertando mediciones NDCI: {e}")
+            log.error(f"[{i}/{total}] {nombre}: error insertando mediciones {code}: {e}")
         finally:
             sql_conn.close()
 
     elapsed = time.monotonic() - start
-    log.info(f"PostgreSQL: {total_inserted} mediciones NDCI insertadas en total, {skipped} puntos omitidos por location no encontrada (demoro {elapsed:.1f}s)")
+    log.info(f"PostgreSQL: {total_inserted} mediciones {code} insertadas en total, {skipped} puntos omitidos por location no encontrada (demoro {elapsed:.1f}s)")
