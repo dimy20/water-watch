@@ -18,6 +18,7 @@ from etl.precipitaciones.load_registros import load as load_precipitaciones_regi
 from etl.reclamos.load_reclamos import load as load_reclamos
 from etl.sentinel.load_locations import load as load_sentinel_locations
 from etl.sentinel.load_mediciones import load as load_sentinel_mediciones
+from etl.sentinel.params import CODE_NDCI, CODE_NDTI
 
 log = logging.getLogger(__name__)
 
@@ -50,7 +51,8 @@ TASKS: dict[str, list[Task]] = {
     ],
     "reclamos": [load_reclamos],
     "sentinel.load_locations": [load_sentinel_locations],
-    "sentinel.load_mediciones": [load_sentinel_mediciones],
+    "sentinel.load_mediciones_ndci": [lambda: load_sentinel_mediciones(CODE_NDCI)],
+    "sentinel.load_mediciones_turbidez": [lambda: load_sentinel_mediciones(CODE_NDTI)],
 }
 
 

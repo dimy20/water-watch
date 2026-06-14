@@ -11,6 +11,7 @@
   { "id": "gems.load_estaciones",            "requires": [] },
   { "id": "gems.load_mediciones",            "requires": ["gems.load_estaciones"] },
   { "id": "reclamos",                        "requires": ["departamentos"] },
-  { "id": "sentinel.load_locations",         "requires": [] },
-  { "id": "sentinel.load_mediciones",        "requires": ["sentinel.load_locations"] }
+  { "id": "sentinel.load_locations",           "requires": [] },
+  { "id": "sentinel.load_mediciones_ndci",     "requires": ["sentinel.load_locations"] },
+  { "id": "sentinel.load_mediciones_turbidez", "requires": ["sentinel.load_locations"] }
 ]
