@@ -11,11 +11,12 @@ El foco esta en PostgreSQL. Las consultas revisadas filtran principalmente por d
 | `departamento_id` + `fecha_inicio` | `reclamosose` | `streamlit/queries/reclamos.py`: reclamos por departamento y serie trimestral | `idx_reclamosose_depto_fecha` |
 | `departamento_id` + `code` + `fecha_inicio` + `value_cat` | `oseparam` | `streamlit/queries/ose.py`: evolucion de calidad por departamento, parametro y periodo | `idx_oseparam_depto_code_fecha_valuecat` |
 | `code` + `fecha_inicio` + `departamento_id` + `value_cat` | `oseparam` | `streamlit/queries/reclamos.py` y `streamlit/queries/riesgo.py`: calculos nacionales de contaminacion por `COLIFORMES TOTALES` | `idx_oseparam_code_fecha_depto_valuecat` |
-| `location_id` + `code` + `fecha_inicio` | `gemsparams` | `streamlit/queries/gems.py`, `streamlit/queries/precipitacion_chla.py`, `streamlit/queries/riesgo.py`: mediciones GEMS por estacion, parametro y periodo | `idx_gemsparams_location_code_fecha` |
-| `code` + `location_id` | `gemsparams` | `streamlit/queries/precipitacion_chla.py`: estaciones con mediciones `Chl-a` | `idx_gemsparams_code_location` |
-| `punto_id` + `type` + `fecha_inicio` | `puntomedicion` | `streamlit/queries/grillas.py` y `streamlit/queries/precipitacion_chla.py`: mediciones de grilla por punto, tipo y periodo | `idx_puntomedicion_punto_type_fecha` |
+| `location_id` + `code` + `fecha_inicio` | `gemsparams` | `streamlit/queries/gems.py`, `streamlit/queries/riesgo.py`: mediciones GEMS por estacion, parametro y periodo | `idx_gemsparams_location_code_fecha` |
+| `code` + `location_id` | `gemsparams` | Sin uso actual desde que `precipitacion_chla.py` fue reemplazado por `precipitacion_ndci.py` (sentinel_params) | `idx_gemsparams_code_location` |
+| `punto_id` + `type` + `fecha_inicio` | `puntomedicion` | `streamlit/queries/grillas.py` y `streamlit/queries/precipitacion_ndci.py`: mediciones de grilla por punto, tipo y periodo | `idx_puntomedicion_punto_type_fecha` |
 | `location_id` + `fecha_inicio` | `registrotempprec` | `streamlit/queries/riesgo.py`: precipitacion por estacion y periodo | `idx_registrotempprec_location_fecha` |
 | `location_id` + `fecha_inicio` | `paraminumet` | Datos meteorologicos por estacion y periodo, si se consultan desde el dashboard o analisis posteriores | `idx_paraminumet_location_fecha` |
+| `code` + `location_id` + `fecha_inicio` | `sentinel_params` | `streamlit/queries/precipitacion_ndci.py`: puntos con NDCI (`code = 'NDCI'`) y promedio mensual por punto y periodo | `idx_sentinelparams_code_location_fecha` |
 
 ## SQL propuesto
 
@@ -43,6 +44,9 @@ ON registrotempprec (location_id, fecha_inicio);
 
 CREATE INDEX IF NOT EXISTS idx_paraminumet_location_fecha
 ON paraminumet (location_id, fecha_inicio);
+
+CREATE INDEX IF NOT EXISTS idx_sentinelparams_code_location_fecha
+ON sentinel_params (code, location_id, fecha_inicio);
 ```
 
 ## Por que estos indices
@@ -86,16 +90,6 @@ WHERE location_id = ANY(%s)
 
 El indice `(location_id, code, fecha_inicio)` reduce primero por estacion, despues por parametro y finalmente por fecha.
 
-Tambien existe una consulta para obtener estaciones con `Chl-a`:
-
-```sql
-SELECT DISTINCT location_id
-FROM gemsparams
-WHERE code = 'Chl-a'
-```
-
-Para ese caso, `(code, location_id)` permite resolver rapido el conjunto de estaciones disponibles para ese parametro.
-
 ### `puntomedicion`
 
 Las consultas de grilla filtran por punto, tipo de medicion (`IBH`, `PAD`, `ANR`) y periodo.
@@ -122,6 +116,24 @@ El indice `(location_id, fecha_inicio)` evita recorrer toda la tabla para calcul
 ### `paraminumet`
 
 Aunque no aparece con tanta fuerza en las consultas actuales del dashboard, `paraminumet` sigue el mismo criterio de datos meteorologicos por estacion y fecha. Si se usa para analisis por estacion/periodo, el indice `(location_id, fecha_inicio)` es el mas natural.
+
+### `sentinel_params`
+
+`precipitacion_ndci.py` consulta `sentinel_params` de dos formas:
+
+```sql
+SELECT DISTINCT location_id
+FROM sentinel_params
+WHERE code = 'NDCI'
+```
+
+```sql
+WHERE code = 'NDCI'
+  AND location_id = %s
+  AND EXTRACT(YEAR FROM fecha_inicio) BETWEEN %s AND %s
+```
+
+El indice `(code, location_id, fecha_inicio)` cubre ambos patrones: primero filtra por `code`, y de ahi resuelve tanto el conjunto de `location_id` distintos como el promedio mensual por punto y periodo.
 
 ## Nota sobre `fecha_inicio`
 

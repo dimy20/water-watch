@@ -334,7 +334,7 @@ Departamento · Año de inicio · Año de fin (rango 2017–2025).
 | **Estado hídrico del suelo** | Grillas (IBH, PAD, ANR) | Mapa coroplético + barras por departamento. Promedio de puntos de grilla dentro de cada departamento. |
 | **Indicador de Riesgo** | OSE + GEMS + Precipitaciones + IBH | Score 0–3 por departamento. Combina tres condiciones: contaminación bacteriológica (OSE + GEMS), precipitación y estado hídrico del suelo. Mapa coroplético con tooltip por condición. |
 | **Reclamos vs Calidad** | ReclamosOSE + OSEParam | Scatter por departamento (reclamos comerciales vs % contaminación), evolución trimestral dual-eje (barras de reclamos + línea de % contaminación), tabla resumen. |
-| **Precipitación vs Chl-a** | GemsParams (Chl-a) + Grillas (PAD) | Selector de estación GEMS con mediciones de Chl-a y de lag (1–3 meses). Para cada estación se busca el punto de grilla PAD más cercano (`$nearSphere`) y se compara su precipitación mensual (desplazada por el lag) contra la Clorofila-a mensual, en gráfico dual-eje y tabla. |
+| **Precipitación vs NDCI** | SentinelParams (NDCI) + Grillas (PAD) | Selector de punto de monitoreo Sentinel-2 con mediciones de NDCI y de lag (1–3 meses). Para cada punto se busca el punto de grilla PAD más cercano al centroide de su geometría (`$nearSphere`) y se compara su precipitación mensual (desplazada por el lag) contra el NDCI mensual, en gráfico dual-eje y tabla. |
 
 #### Metodología del indicador de riesgo
 
@@ -356,7 +356,7 @@ Score = suma de condiciones activas (0 = sin riesgo, 3 = riesgo elevado).
 | `grillas.py` | Estado hídrico por departamento (puntos de grilla `$geoWithin`) |
 | `riesgo.py` | Indicador de riesgo combinado |
 | `reclamos.py` | Reclamos por departamento, serie trimestral, correlación reclamos–calidad |
-| `precipitacion_chla.py` | Estaciones GEMS con Chl-a, punto de grilla PAD más cercano (`$nearSphere`), cruce mensual PAD vs Chl-a con lag |
+| `precipitacion_ndci.py` | Puntos Sentinel con NDCI, punto de grilla PAD más cercano al centroide (`$nearSphere`), cruce mensual PAD vs NDCI con lag |
 
 #### Caché
 
