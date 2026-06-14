@@ -366,6 +366,14 @@ Score = suma de condiciones activas (0 = sin riesgo, 3 = riesgo elevado).
 | Departamentos, GeoJSON, estaciones por depto | 3600 s |
 | Series temporales (calidad, grillas, riesgo) | 600 s |
 
+### Testing
+
+Estructura de tests con `pytest`, espejando la estructura de `etl/` dentro de `tests/`.
+
+```bash
+pytest
+```
+
 ### Docker
 
 #### Cluster MongoDB local
