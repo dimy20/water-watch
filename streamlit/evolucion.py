@@ -1,3 +1,5 @@
+import uuid
+
 import numpy as np
 import pandas as pd
 import pydeck
@@ -229,10 +231,15 @@ def _preparar_departamentos_mapa(df, centroides, value_col, value_label, unidad=
 
 
 def _df_records(df: pd.DataFrame) -> list[dict]:
-    """Convierte un DataFrame a records JSON-nativos (sin numpy.float64/int64),
-    para que pydeck no falle al serializar en versiones que no toleran tipos numpy."""
+    """Convierte un DataFrame a records JSON-nativos (sin numpy.float64/int64
+    ni uuid.UUID), para que pydeck no falle al serializar en versiones que no
+    toleran estos tipos."""
     def _native(v):
-        return v.item() if isinstance(v, np.generic) else v
+        if isinstance(v, np.generic):
+            return v.item()
+        if isinstance(v, uuid.UUID):
+            return str(v)
+        return v
 
     return [{k: _native(v) for k, v in rec.items()} for rec in df.to_dict(orient="records")]
 
