@@ -81,7 +81,7 @@ def loading_markup(text: str = "Cargando Water Watch...", subtext: str = "Prepar
 
 
 initial_loader = st.empty()
-initial_loader.markdown(loading_markup(), unsafe_allow_html=True)
+#initial_loader.markdown(loading_markup(), unsafe_allow_html=True)
 
 pg = postgres()
 db = mongo()
