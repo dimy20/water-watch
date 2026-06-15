@@ -16,3 +16,4 @@ plotly
 pydeck
 boto3
 pytest
+shapely

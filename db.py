@@ -2,8 +2,6 @@
 import os
 from psycopg import Connection
 
-from pymongo import MongoClient
-from pymongo.database import Database
 
 def get_postgres_conn() -> Connection:
     return psycopg.connect(os.environ["ETL_DATABASE_URL"])
@@ -20,7 +18,7 @@ def get_streamlit_postgres_conn() -> Connection:
 import os
 from pathlib import Path
 from urllib.parse import quote_plus
-
+from pymongo.database import Database
 import psycopg
 from pymongo import MongoClient
 from bson.codec_options import CodecOptions
