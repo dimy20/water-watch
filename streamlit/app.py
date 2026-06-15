@@ -1,6 +1,6 @@
 from pathlib import Path
-from dotenv import load_dotenv
-load_dotenv(override=True, dotenv_path=Path(__file__).parent.parent / ".env.local")
+#from dotenv import load_dotenv
+#load_dotenv(override=True, dotenv_path=Path(__file__).parent.parent / ".env.local")
 
 import streamlit as st
 
