@@ -1,3 +1,4 @@
+import numpy as np
 import pandas as pd
 import pydeck
 import streamlit as st
@@ -227,6 +228,15 @@ def _preparar_departamentos_mapa(df, centroides, value_col, value_label, unidad=
     return df_mapa.sort_values("ranking")
 
 
+def _df_records(df: pd.DataFrame) -> list[dict]:
+    """Convierte un DataFrame a records JSON-nativos (sin numpy.float64/int64),
+    para que pydeck no falle al serializar en versiones que no toleran tipos numpy."""
+    def _native(v):
+        return v.item() if isinstance(v, np.generic) else v
+
+    return [{k: _native(v) for k, v in rec.items()} for rec in df.to_dict(orient="records")]
+
+
 def _mapa_departamentos_puntos(df_mapa, value_col):
     return pdk.Deck(
         map_style="https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
@@ -240,7 +250,7 @@ def _mapa_departamentos_puntos(df_mapa, value_col):
         layers=[
             pdk.Layer(
                 "ScatterplotLayer",
-                data=df_mapa,
+                data=_df_records(df_mapa),
                 id=f"{value_col}_departamentos",
                 get_position="[lon, lat]",
                 get_radius="radio",
@@ -1048,7 +1058,7 @@ with tab_precip_ndci:
 
         capa_puntos = pydeck.Layer(
             "ScatterplotLayer",
-            data=df_mapa,
+            data=_df_records(df_mapa),
             id="sentinel-points",
             get_position=["lon", "lat"],
             get_fill_color="color",
@@ -1066,14 +1076,14 @@ with tab_precip_ndci:
             lat_grilla, lon_grilla = coords_grilla
 
             df_linea = pd.DataFrame([{
-                "lat_origen": fila_actual["lat"],
-                "lon_origen": fila_actual["lon"],
-                "lat_destino": lat_grilla,
-                "lon_destino": lon_grilla,
+                "lat_origen": float(fila_actual["lat"]),
+                "lon_origen": float(fila_actual["lon"]),
+                "lat_destino": float(lat_grilla),
+                "lon_destino": float(lon_grilla),
             }])
             capa_linea = pydeck.Layer(
                 "LineLayer",
-                data=df_linea,
+                data=_df_records(df_linea),
                 id="pad-grid-line",
                 get_source_position=["lon_origen", "lat_origen"],
                 get_target_position=["lon_destino", "lat_destino"],
@@ -1088,7 +1098,7 @@ with tab_precip_ndci:
             }])
             capa_grilla = pydeck.Layer(
                 "ScatterplotLayer",
-                data=df_grilla,
+                data=_df_records(df_grilla),
                 id="pad-grid-point",
                 get_position=["lon", "lat"],
                 get_fill_color=[46, 125, 50, 220],
@@ -1102,8 +1112,8 @@ with tab_precip_ndci:
             capas = [capa_linea, capa_grilla]
 
         vista_mapa = pydeck.ViewState(
-            latitude=df_mapa["lat"].mean(),
-            longitude=df_mapa["lon"].mean(),
+            latitude=float(df_mapa["lat"].mean()),
+            longitude=float(df_mapa["lon"].mean()),
             zoom=6,
             controller=True,
         )
