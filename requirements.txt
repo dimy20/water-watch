@@ -13,4 +13,6 @@ pystac-client
 tqdm
 streamlit
 plotly
+pydeck
 boto3
+pytest

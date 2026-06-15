@@ -12,7 +12,10 @@ from .reclamos import (
     get_reclamos_trimestral,
     get_correlacion_reclamos_calidad,
 )
-from .precipitacion_chla import (
-    get_estaciones_con_chla,
-    get_precipitacion_vs_chla,
+from .precipitacion_ndci import (
+    get_locations_con_ndci,
+    get_precipitacion_vs_ndci,
+    get_correlacion_por_lag,
+    get_punto_grilla_cercano_sentinel,
+    get_punto_grilla_coords,
 )

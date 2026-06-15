@@ -1,0 +1,47 @@
+<svg width="760" height="300" viewBox="0 0 760 300" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="waterText" x1="84" y1="122" x2="342" y2="198" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#44C7F4"/>
+      <stop offset="0.55" stop-color="#168FE5"/>
+      <stop offset="1" stop-color="#0C68C7"/>
+    </linearGradient>
+    <linearGradient id="drop" x1="570" y1="38" x2="642" y2="242" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#44C7F4"/>
+      <stop offset="1" stop-color="#0A70D8"/>
+    </linearGradient>
+    <linearGradient id="waterFill" x1="552" y1="172" x2="682" y2="230" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#E8FAFF"/>
+      <stop offset="0.55" stop-color="#64D8F2"/>
+      <stop offset="1" stop-color="#0B72D8"/>
+    </linearGradient>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#0A70D8" flood-opacity="0.18"/>
+    </filter>
+  </defs>
+
+  <rect width="760" height="300" rx="22" fill="white"/>
+  <g filter="url(#softShadow)">
+    <text x="78" y="162" font-family="Inter, Arial, sans-serif" font-size="78" font-weight="300" fill="url(#waterText)">Water</text>
+    <text x="315" y="162" font-family="Inter, Arial, sans-serif" font-size="78" font-weight="300" fill="#72777E">Watch</text>
+    <line x1="178" y1="204" x2="236" y2="204" stroke="#168FE5" stroke-width="3" stroke-linecap="round"/>
+    <text x="252" y="217" font-family="Inter, Arial, sans-serif" font-size="27" letter-spacing="13" font-weight="400" fill="#168FE5">URUGUAY</text>
+    <line x1="466" y1="204" x2="524" y2="204" stroke="#168FE5" stroke-width="3" stroke-linecap="round"/>
+  </g>
+
+  <path d="M611 38C596 73 564 110 548 137C531 165 529 192 545 217C560 239 584 252 611 252C638 252 662 239 677 217C693 192 691 165 674 137C658 110 626 73 611 38Z" fill="#F7FDFF" stroke="url(#drop)" stroke-width="10" filter="url(#softShadow)"/>
+  <path d="M546 193C574 214 635 224 676 193C674 204 669 215 661 224C649 239 631 247 611 247C591 247 573 239 561 224C554 215 549 204 546 193Z" fill="url(#waterFill)" opacity="0.95"/>
+  <path d="M562 165C588 180 629 179 662 162" stroke="#168FE5" stroke-width="16" stroke-linecap="round"/>
+  <path d="M560 190C590 207 635 207 666 185" stroke="#168FE5" stroke-width="13" stroke-linecap="round"/>
+  <path d="M652 143L682 138" stroke="#168FE5" stroke-width="17" stroke-linecap="square"/>
+  <circle cx="591" cy="154" r="15" fill="#FFC20A"/>
+  <g stroke="#FFC20A" stroke-width="5" stroke-linecap="round">
+    <line x1="591" y1="124" x2="591" y2="136"/>
+    <line x1="591" y1="172" x2="591" y2="184"/>
+    <line x1="561" y1="154" x2="573" y2="154"/>
+    <line x1="609" y1="154" x2="621" y2="154"/>
+    <line x1="570" y1="133" x2="579" y2="142"/>
+    <line x1="603" y1="166" x2="612" y2="175"/>
+    <line x1="612" y1="133" x2="603" y2="142"/>
+    <line x1="579" y1="166" x2="570" y2="175"/>
+  </g>
+</svg>
