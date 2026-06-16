@@ -117,8 +117,8 @@ def get_streamlit_mongo_conn():
     mongo_url = os.getenv("STREAMLIT_MONGO_URL") or os.getenv("MONGO_URI")
 
     if mongo_url:
-        client = MongoClient(mongo_url) 
-        return client
+        client = MongoClient(mongo_url, uuidRepresentation="standard")
+        return client["grp05b"]
 
     user = os.getenv("MONGO_APP_USER")
     password = os.getenv("MONGO_APP_PASSWORD")
@@ -140,9 +140,5 @@ def get_streamlit_mongo_conn():
         f"mongodb://{user}:{password}@{host}:{port}/{db}"
         f"?authSource={db}"
     )
-    client = MongoClient(mongo_url)
-    return client
-
-def get_streamlit_mongo_conn() -> Database:
-    client = MongoClient(os.environ["STREAMLIT_MONGO_URL"], uuidRepresentation="standard")
+    client = MongoClient(mongo_url, uuidRepresentation="standard")
     return client["grp05db"]
