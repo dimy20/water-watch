@@ -1,28 +1,24 @@
-"""import psycopg
-import os
-from psycopg import Connection
-
-
-def get_postgres_conn() -> Connection:
-    return psycopg.connect(os.environ["ETL_DATABASE_URL"])
-
-def get_mongo_conn() -> Database:
-    client = MongoClient(os.environ["ETL_MONGO_URL"], uuidRepresentation="standard")
-    return client["grp05db"]
-
-def get_streamlit_postgres_conn() -> Connection:
-    return psycopg.connect(os.environ["STREAMLIT_DATABASE_URL"])
-
-"""
-
 import os
 from pathlib import Path
 from urllib.parse import quote_plus
+from psycopg import Connection
 from pymongo.database import Database
 import psycopg
 from pymongo import MongoClient
 from bson.codec_options import CodecOptions
 from bson.binary import UuidRepresentation
+
+
+# ---------------------------------------------------------
+# Conexiones para el ETL (credenciales separadas de Streamlit)
+# ---------------------------------------------------------
+def get_postgres_conn() -> Connection:
+    return psycopg.connect(os.environ["ETL_DATABASE_URL"])
+
+
+def get_mongo_conn() -> Database:
+    client = MongoClient(os.environ["ETL_MONGO_URL"], uuidRepresentation="standard")
+    return client["grp05db"]
 
 
 # ---------------------------------------------------------
@@ -147,25 +143,6 @@ def get_streamlit_mongo_conn():
     client = MongoClient(mongo_url)
     return client
 
-
-#def get_streamlit_mongo_db():
-#    """
-#    Devuelve directamente la base de datos MongoDB.
-#    """
-#
-#    client = get_streamlit_mongo_conn()
-#
-#    db_name = os.getenv("MONGO_APP_DB")
-#
-#    codec_options = CodecOptions(
-#        uuid_representation=UuidRepresentation.STANDARD
-#    )
-#
-#    if not db_name:
-#        raise RuntimeError("Falta la variable MONGO_APP_DB.")
-#    return client.get_database(db_name, codec_options=codec_options)
-#    #return client[db_name]
-    
 def get_streamlit_mongo_conn() -> Database:
     client = MongoClient(os.environ["STREAMLIT_MONGO_URL"], uuidRepresentation="standard")
     return client["grp05db"]

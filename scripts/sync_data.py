@@ -53,10 +53,12 @@ def sync() -> set[str]:
 
                     resource_id = resource["id"]
                     hash_ = resource.get("hash", "")
-                    if hash_ and hash_ == _known_hash(cur, resource_id):
+                    hash_anterior = _known_hash(cur, resource_id)
+                    if hash_ and hash_ == hash_anterior:
                         continue
 
-                    print(f"[{package}] {path} -> descargando (hash cambio o nuevo)")
+                    motivo = "nuevo" if hash_anterior is None else "modificado"
+                    print(f"[{package}] {path} -> descargando ({motivo})")
                     contenido = ckan_client.download_resource(resource)
                     dest = DATA_DIR / path
                     dest.parent.mkdir(parents=True, exist_ok=True)

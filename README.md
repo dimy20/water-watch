@@ -257,11 +257,19 @@ Pipeline de carga por fuente. Cada módulo es independiente y tiene dedup determ
 | Script | Descripción |
 |---|---|
 | `scripts/count_records.py` | Cuenta registros en todas las tablas PostgreSQL y colecciones MongoDB, e imprime el total por base. |
+| `scripts/reconciliation.py` | Concilia volumen de origen vs. cargado: por cada tarea del pipeline, lee los archivos de `data/` y aplica el mismo pre-proceso que su loader, y compara ese conteo contra el conteo actual en destino (PostgreSQL/MongoDB). Solo lectura, no ejecuta el pipeline. |
 | `scripts/backup.py` | Backups de PostgreSQL, MongoDB y `data/` hacia S3. Ver sección Seguridad → Backups. |
 
 ```bash
 python scripts/count_records.py
+python scripts/reconciliation.py
+python scripts/reconciliation.py --csv reconciliacion.csv   # exporta una tabla resumida (fuente, origen, cargado, diferencia, motivo) para el informe
 ```
+
+`reconciliation.py` separa dos casos:
+
+- **Tareas con destino propio**: comparación 1:1 `origen` vs `cargado`. La diferencia se explica por dedup (`create_id` + `ON CONFLICT`/upsert) y, en `bacteriologia_ose` y `reclamos`, por filas sin `departamento_id` mapeado que se descartan después del pre-proceso. Una diferencia negativa (cargado > origen, como en `precipitaciones.registros` o `puntomedicion`/grillas) indica que el destino conserva registros de una versión anterior de un archivo de origen que ya no está en `data/`: la carga es solo aditiva (`ON CONFLICT DO NOTHING`/upsert, nunca borra), así que si el CDC trae una versión más nueva o recortada de un archivo, las filas ya cargadas de la versión vieja quedan en la base aunque el origen actual no las regenere. Por ejemplo, en `puntomedicion` las 179 filas extra por tipo (IBH/PAD/ANR) corresponden todas al período 2026-06-01/2026-06-10, que ya no aparece en los CSV actuales de `data/grillas/`.
+- **Destinos compartidos**: varias tareas escriben en la misma tabla/colección (`mongo.estaciones`, `mongo.areas`, `postgres.paraminumet`, `postgres.puntomedicion`, `postgres.gemsparams`). Se muestra el `cargado` total junto con el `origen` de cada tarea que contribuye, sin sumarlos como si fuera una comparación 1:1. `postgres.sentinel_params` no tiene conteo de origen estático porque las series NDCI/turbidez se calculan dinámicamente vía Sentinel Hub API.
 
 ### CDC
 
