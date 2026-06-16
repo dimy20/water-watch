@@ -1041,11 +1041,11 @@ with tab_reclamos:
 # ── TAB PRECIPITACIÓN VS CHL-A ────────────────────────────────────────────────
 
 with tab_precip_ndci:
-    st.markdown("#### Precipitación (PAD) vs NDCI")
+    st.markdown("#### PAD vs NDCI")
     st.caption(
-        "Compara la precipitación acumulada decádica (PAD) del punto de grilla más cercano "
+        "Compara el porcentaje de agua disponible en el suelo (PAD) del punto de grilla más cercano "
         "a un punto de monitoreo Sentinel-2 con el NDCI (índice, proxy de clorofila) de ese "
-        "punto, desplazando la precipitación un número de meses (lag) para evaluar su efecto "
+        "punto, desplazando el PAD un número de meses (lag) para evaluar su efecto "
         "posterior."
     )
 
@@ -1186,7 +1186,7 @@ with tab_precip_ndci:
                     marker_color="rgba(66,133,244,0.7)",
                     yaxis="y1",
                     customdata=df_precip_ndci["pad_periodo"].dt.strftime("%Y-%m"),
-                    hovertemplate="PAD de %{customdata}: %{y:.1f} mm<extra></extra>",
+                    hovertemplate="PAD de %{customdata}: %{y:.1f}%<extra></extra>",
                 ))
             else:
                 st.info("No se encontró un punto de grilla PAD cercano a este punto.")
@@ -1205,7 +1205,7 @@ with tab_precip_ndci:
 
             fig_precip_ndci.update_layout(
                 xaxis=dict(title="Mes", type="date"),
-                yaxis=dict(title="PAD (mm)", side="left", rangemode="tozero"),
+                yaxis=dict(title="PAD (%)", side="left", rangemode="tozero"),
                 yaxis2=dict(
                     title="NDCI (índice)",
                     side="right",

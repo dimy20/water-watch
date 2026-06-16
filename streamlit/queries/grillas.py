@@ -3,9 +3,9 @@ from shapely.geometry import shape
 
 
 TIPOS = {
-    "IBH": "Índice de Humedad del Balance",
-    "PAD": "Precipitación Acumulada Decádica",
-    "ANR": "Agua No Retenida",
+    "IBH": "Índice de Bienestar Hídrico",
+    "PAD": "Porcentaje de Agua Disponible en el Suelo",
+    "ANR": "Agua No Retenida en el Suelo",
 }
 
 
