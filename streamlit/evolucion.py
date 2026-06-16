@@ -14,6 +14,8 @@ from queries import (
     get_departamentos_con_datos,
     get_evolucion_calidad,
     transformar_para_dashboard,
+    get_patron_estacional,
+    get_pct_presencia_por_departamento_periodo,
     get_estaciones_por_departamento,
     get_gems_evolucion,
     get_pct_presencia_por_departamento,
@@ -175,6 +177,16 @@ def _reclamos_trimestral(_pg, departamento_id, anio_inicio, anio_fin):
     return get_reclamos_trimestral(_pg, departamento_id, anio_inicio, anio_fin)
 
 
+@st.cache_data(ttl=3600, show_spinner="Cargando Water Watch...")
+def _patron_estacional(_pg, ose_code, anio_inicio, anio_fin):
+    return get_patron_estacional(_pg, ose_code, anio_inicio, anio_fin)
+
+
+@st.cache_data(ttl=3600, show_spinner="Cargando Water Watch...")
+def _pct_por_depto_periodo(_pg, _db, ose_code, anio_inicio, anio_fin):
+    return get_pct_presencia_por_departamento_periodo(_pg, _db, ose_code, anio_inicio, anio_fin)
+
+
 @st.cache_data(ttl=3600)
 def _estaciones_chla(_pg, _db):
     return get_estaciones_con_chla(_pg, _db)
@@ -228,6 +240,19 @@ def _preparar_departamentos_mapa(df, centroides, value_col, value_label, unidad=
         + "<br>" + value_label + ": " + df_mapa[value_col].map(lambda v: f"{v:.2f}") + sufijo
     )
     return df_mapa.sort_values("ranking")
+
+
+def _fmt_val(v: float) -> str:
+    if v == 0:
+        return "0"
+    abs_v = abs(v)
+    if abs_v >= 100:
+        return f"{v:.1f}"
+    if abs_v >= 1:
+        return f"{v:.2f}"
+    if abs_v >= 0.01:
+        return f"{v:.4f}"
+    return f"{v:.6f}"
 
 
 def _df_records(df: pd.DataFrame) -> list[dict]:
@@ -512,6 +537,36 @@ with tab_bacterio:
             )
             st.plotly_chart(fig_ose, use_container_width=True)
 
+    if param["ose_code"] is not None:
+        st.divider()
+        st.markdown("#### Patrón estacional")
+        df_estacional = _patron_estacional(pg, param["ose_code"], anio_inicio, anio_fin)
+        if not df_estacional.empty:
+            fig_estacional = go.Figure(go.Bar(
+                x=df_estacional["trimestre_label"],
+                y=df_estacional["pct_presencia"],
+                marker_color="#e53935",
+                hovertemplate="%{x}: %{y:.1f}%<extra></extra>",
+            ))
+            fig_estacional.update_layout(
+                yaxis_title="% Muestras con presencia",
+                yaxis=dict(ticksuffix="%"),
+                showlegend=False,
+            )
+            st.plotly_chart(fig_estacional, use_container_width=True, key="fig_estacional_bacterio")
+            st.caption("Promedio por trimestre calendario colapsando todos los años del período seleccionado.")
+
+        st.divider()
+        st.markdown("#### Comparación entre departamentos")
+        df_ranking = _pct_por_depto_periodo(pg, db, param["ose_code"], anio_inicio, anio_fin)
+        if not df_ranking.empty:
+            st.plotly_chart(
+                _grafico_ranking_departamentos(df_ranking, "pct_presencia", "% muestras con presencia", "%"),
+                use_container_width=True,
+                key="fig_ranking_bacterio",
+            )
+            st.caption(f"Período {anio_inicio}–{anio_fin}. {len(df_ranking)} departamentos con datos.")
+
     st.divider()
 
     # ── GEMS (abajo) ──────────────────────────────────────────────────────────
@@ -529,9 +584,9 @@ with tab_bacterio:
             st.info(f"No hay datos GEMS de {param_nombre} para {nombre_depto} en el período.")
         else:
             col1, col2, col3 = st.columns(3)
-            col1.metric(f"Promedio ({param['unidad']})", f"{df_gems['valor_medio'].mean():.2f}")
-            col2.metric(f"Mínimo ({param['unidad']})", f"{df_gems['valor_min'].min():.2f}")
-            col3.metric(f"Máximo ({param['unidad']})", f"{df_gems['valor_max'].max():.2f}")
+            col1.metric(f"Promedio ({param['unidad']})", _fmt_val(df_gems['valor_medio'].mean()))
+            col2.metric(f"Mínimo ({param['unidad']})", _fmt_val(df_gems['valor_min'].min()))
+            col3.metric(f"Máximo ({param['unidad']})", _fmt_val(df_gems['valor_max'].max()))
 
             df_gems["periodo_str"] = (
                 df_gems["periodo"].dt.year.astype(str)
@@ -555,7 +610,7 @@ with tab_bacterio:
                 x=df_gems["periodo_str"], y=df_gems["valor_medio"],
                 mode="lines+markers", name="Promedio mensual",
                 line=dict(color="#e53935"),
-                hovertemplate="%{x}: %{y:.2f} " + param["unidad"] + "<extra></extra>",
+                hovertemplate="%{x}: %{y:.6g} " + param["unidad"] + "<extra></extra>",
             ))
             fig_gems_bacterio.update_layout(
                 xaxis_title="Mes",
@@ -588,9 +643,9 @@ with tab_gems:
             st.info(f"No hay datos de {nombre_param} para {nombre_depto} en el período seleccionado.")
         else:
             col1, col2, col3 = st.columns(3)
-            col1.metric(f"Promedio del período ({unidad})", f"{df_gems['valor_medio'].mean():.2f}")
-            col2.metric(f"Mínimo registrado ({unidad})", f"{df_gems['valor_min'].min():.2f}")
-            col3.metric(f"Máximo registrado ({unidad})", f"{df_gems['valor_max'].max():.2f}")
+            col1.metric(f"Promedio del período ({unidad})", _fmt_val(df_gems['valor_medio'].mean()))
+            col2.metric(f"Mínimo registrado ({unidad})", _fmt_val(df_gems['valor_min'].min()))
+            col3.metric(f"Máximo registrado ({unidad})", _fmt_val(df_gems['valor_max'].max()))
 
             df_gems["periodo_str"] = (
                 df_gems["periodo"].dt.year.astype(str)
@@ -613,7 +668,7 @@ with tab_gems:
             fig_gems.add_trace(go.Scatter(
                 x=df_gems["periodo_str"], y=df_gems["valor_medio"],
                 mode="lines+markers", name="Promedio mensual",
-                hovertemplate="%{x}: %{y:.2f} " + unidad + "<extra></extra>",
+                hovertemplate="%{x}: %{y:.6g} " + unidad + "<extra></extra>",
             ))
             fig_gems.update_layout(
                 title=f"{nombre_param} — {nombre_depto}",

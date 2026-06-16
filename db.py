@@ -118,7 +118,7 @@ def get_streamlit_mongo_conn():
 
     if mongo_url:
         client = MongoClient(mongo_url, uuidRepresentation="standard")
-        return client["grp05b"]
+        return client["grp05db"]
 
     user = os.getenv("MONGO_APP_USER")
     password = os.getenv("MONGO_APP_PASSWORD")
