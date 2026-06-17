@@ -82,3 +82,41 @@ def get_gems_bacterio_por_departamento(mongo_db, pg_conn, gems_code: str) -> pd.
             result.append({"nombre": nombre, "valor_medio": sum(valores) / len(valores)})
 
     return pd.DataFrame(result)
+
+
+def get_gems_evolucion_todos_departamentos(
+    pg_conn, mongo_db, code: str, anio_inicio: int, anio_fin: int
+) -> pd.DataFrame:
+    departamentos = list(mongo_db["departamentos"].find({}, {"_id": 1, "nombre": 1, "geometry": 1}))
+    location_map = {}
+    for depto in departamentos:
+        ests = mongo_db["estaciones"].find(
+            {"location": {"$geoWithin": {"$geometry": depto["geometry"]}}}, {"_id": 1}
+        )
+        for est in ests:
+            location_map[est["_id"]] = depto["nombre"]
+    if not location_map:
+        return pd.DataFrame(columns=["nombre", "periodo", "valor_medio"])
+    sql = """
+        SELECT location_id,
+               DATE_TRUNC('month', fecha_inicio) AS periodo,
+               AVG(value) AS valor_medio
+        FROM gemsparams
+        WHERE location_id = ANY(%s)
+          AND EXTRACT(YEAR FROM fecha_inicio) >= %s
+          AND EXTRACT(YEAR FROM fecha_inicio) <= %s
+          AND code = %s
+          AND value IS NOT NULL
+        GROUP BY location_id, periodo
+        ORDER BY periodo
+    """
+    cur = pg_conn.cursor()
+    cur.execute(sql, (list(location_map.keys()), anio_inicio, anio_fin, code))
+    rows = cur.fetchall()
+    if not rows:
+        return pd.DataFrame(columns=["nombre", "periodo", "valor_medio"])
+    df = pd.DataFrame(rows, columns=["location_id", "periodo", "valor_medio"])
+    df["valor_medio"] = df["valor_medio"].astype(float)
+    df["nombre"] = df["location_id"].map(location_map)
+    df = df.dropna(subset=["nombre"])
+    return df.groupby(["nombre", "periodo"])["valor_medio"].mean().reset_index()

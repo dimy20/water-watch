@@ -18,6 +18,7 @@ from queries import (
     get_pct_presencia_por_departamento_periodo,
     get_estaciones_por_departamento,
     get_gems_evolucion,
+    get_gems_evolucion_todos_departamentos,
     get_pct_presencia_por_departamento,
     get_gems_bacterio_por_departamento,
     get_hidrico_suelo_por_departamento,
@@ -26,6 +27,9 @@ from queries import (
     get_reclamos_trimestral,
     get_correlacion_reclamos_calidad,
     get_locations_con_ndci,
+    get_ndci_mensual_cuerpos_agua,
+    get_ndci_observaciones_cuerpos_agua,
+    get_ndci_resumen_cuerpos_agua,
     get_precipitacion_vs_ndci,
     get_correlacion_por_lag,
     get_punto_grilla_cercano_sentinel,
@@ -119,6 +123,11 @@ def _pct_por_depto(_pg, _db, ose_code):
 
 
 @st.cache_data(ttl=3600, show_spinner="Cargando Water Watch...")
+def _gems_todos_deptos(_pg, _db, param_code, anio_inicio, anio_fin):
+    return get_gems_evolucion_todos_departamentos(_pg, _db, param_code, anio_inicio, anio_fin)
+
+
+@st.cache_data(ttl=3600, show_spinner="Cargando Water Watch...")
 def _gems_bacterio_nacional(_db, _pg, gems_code):
     return get_gems_bacterio_por_departamento(_db, _pg, gems_code)
 
@@ -200,6 +209,21 @@ def _precip_vs_chla(_pg, _db, location_id, anio_inicio, anio_fin, lag_meses):
 @st.cache_data(ttl=3600, show_spinner="Cargando Water Watch...")
 def _locations_ndci(_pg, _db):
     return get_locations_con_ndci(_pg, _db)
+
+
+@st.cache_data(ttl=600, show_spinner="Cargando Water Watch...")
+def _ndci_resumen_cuerpos_agua(_pg, _db, anio_inicio, anio_fin):
+    return get_ndci_resumen_cuerpos_agua(_pg, _db, anio_inicio, anio_fin)
+
+
+@st.cache_data(ttl=600, show_spinner="Cargando Water Watch...")
+def _ndci_mensual_cuerpos_agua(_pg, _db, anio_inicio, anio_fin):
+    return get_ndci_mensual_cuerpos_agua(_pg, _db, anio_inicio, anio_fin)
+
+
+@st.cache_data(ttl=600, show_spinner="Cargando Water Watch...")
+def _ndci_observaciones_cuerpos_agua(_pg, _db, anio_inicio, anio_fin):
+    return get_ndci_observaciones_cuerpos_agua(_pg, _db, anio_inicio, anio_fin)
 
 
 @st.cache_data(ttl=3600, show_spinner="Cargando Water Watch...")
@@ -464,13 +488,14 @@ departamento_id = depto_row["departamento_id"]
 st.title("Water Watch")
 st.subheader(f"{nombre_depto} · {anio_inicio}–{anio_fin}")
 
-tab_bacterio, tab_gems, tab_resumen, tab_suelo, tab_riesgo, tab_reclamos, tab_precip_ndci = st.tabs([
+tab_bacterio, tab_gems, tab_resumen, tab_suelo, tab_riesgo, tab_reclamos, tab_ndci_variacion, tab_precip_ndci = st.tabs([
     "Bacteriología",
     "Fisicoquímica (GEMS)",
     "Resumen nacional",
     "Estado hídrico del suelo",
     "Indicador de Riesgo",
     "Reclamos vs Calidad",
+    "NDCI por cuerpo de agua",
     "Precipitación vs NDCI",
 ])
 
@@ -679,6 +704,41 @@ with tab_gems:
             )
             st.plotly_chart(fig_gems, use_container_width=True)
             st.caption(f"Promedio mensual de {len(location_ids)} estación(es) GEMS en {nombre_depto}. La banda azul muestra el rango entre el mínimo y máximo registrado en el mes.")
+
+            st.markdown("#### Evolución mensual por departamento")
+            df_todos = _gems_todos_deptos(pg, db, param_code, anio_inicio, anio_fin)
+            if df_todos.empty:
+                st.info("Sin datos multi-departamento para el período seleccionado.")
+            else:
+                df_todos["periodo_str"] = (
+                    df_todos["periodo"].dt.year.astype(str)
+                    + "-"
+                    + df_todos["periodo"].dt.month.astype(str).str.zfill(2)
+                )
+                df_pivot = df_todos.pivot(
+                    index="nombre", columns="periodo_str", values="valor_medio"
+                ).sort_index()
+                fig_multi = go.Figure(go.Heatmap(
+                    z=df_pivot.values,
+                    x=df_pivot.columns.tolist(),
+                    y=df_pivot.index.tolist(),
+                    colorscale="YlOrRd",
+                    colorbar=dict(title=unidad),
+                    hovertemplate="%{y} — %{x}: %{z:.6g} " + unidad + "<extra></extra>",
+                ))
+                fig_multi.update_layout(
+                    title=f"{nombre_param} — todos los departamentos",
+                    xaxis_title="Mes",
+                    yaxis_title=None,
+                    height=520,
+                    margin=dict(l=120, r=40, t=50, b=60),
+                )
+                st.plotly_chart(fig_multi, use_container_width=True, key="fig_gems_multi_depto")
+                n_deptos = df_todos["nombre"].nunique()
+                st.caption(
+                    f"Promedio mensual por departamento — {n_deptos} departamentos con datos. "
+                    f"Período {anio_inicio}–{anio_fin}."
+                )
 
 # ── TAB RESUMEN NACIONAL ──────────────────────────────────────────────────────
 
@@ -1093,7 +1153,166 @@ with tab_reclamos:
             hide_index=True,
         )
 
-# ── TAB PRECIPITACIÓN VS CHL-A ────────────────────────────────────────────────
+# ── TAB NDCI POR CUERPO DE AGUA ─────────────────────────────────────────────
+
+with tab_ndci_variacion:
+    st.markdown("#### Variación del NDCI por cuerpo de agua · 2018–2024")
+    st.caption(
+        "El NDCI se usa como proxy satelital de clorofila superficial. "
+        "Valores más altos indican mayor señal relativa de clorofila estimada."
+    )
+
+    ndci_anio_inicio = 2018
+    ndci_anio_fin = 2024
+    df_ndci_resumen = _ndci_resumen_cuerpos_agua(pg, db, ndci_anio_inicio, ndci_anio_fin)
+    df_ndci_mensual = _ndci_mensual_cuerpos_agua(pg, db, ndci_anio_inicio, ndci_anio_fin)
+    df_ndci_obs = _ndci_observaciones_cuerpos_agua(pg, db, ndci_anio_inicio, ndci_anio_fin)
+
+    if df_ndci_resumen.empty:
+        st.info("No hay mediciones NDCI para el período 2018–2024.")
+    else:
+        top_ndci = df_ndci_resumen.head(3)
+        bottom_ndci = df_ndci_resumen.tail(3).sort_values("ndci_promedio")
+
+        col_top, col_bottom = st.columns(2)
+        with col_top:
+            st.markdown("##### Mayores promedios")
+            st.dataframe(
+                top_ndci[["nombre", "ndci_promedio", "observaciones"]].rename(columns={
+                    "nombre": "Cuerpo de agua",
+                    "ndci_promedio": "NDCI promedio",
+                    "observaciones": "Obs.",
+                }).round({"NDCI promedio": 4}),
+                use_container_width=True,
+                hide_index=True,
+            )
+        with col_bottom:
+            st.markdown("##### Menores promedios")
+            st.dataframe(
+                bottom_ndci[["nombre", "ndci_promedio", "observaciones"]].rename(columns={
+                    "nombre": "Cuerpo de agua",
+                    "ndci_promedio": "NDCI promedio",
+                    "observaciones": "Obs.",
+                }).round({"NDCI promedio": 4}),
+                use_container_width=True,
+                hide_index=True,
+            )
+
+        df_bar_ndci = df_ndci_resumen.sort_values("ndci_promedio", ascending=True)
+        fig_ndci_bar = go.Figure(go.Bar(
+            x=df_bar_ndci["ndci_promedio"],
+            y=df_bar_ndci["nombre"],
+            orientation="h",
+            marker_color=df_bar_ndci["ndci_promedio"],
+            marker_colorscale="RdYlGn",
+            customdata=np.stack([
+                df_bar_ndci["observaciones"],
+                df_bar_ndci["ndci_min"],
+                df_bar_ndci["ndci_max"],
+                df_bar_ndci["ndci_desvio"].fillna(0),
+            ], axis=-1),
+            hovertemplate=(
+                "<b>%{y}</b><br>"
+                "NDCI promedio: %{x:.4f}<br>"
+                "Obs.: %{customdata[0]}<br>"
+                "Mín.: %{customdata[1]:.4f}<br>"
+                "Máx.: %{customdata[2]:.4f}<br>"
+                "Desvío: %{customdata[3]:.4f}<extra></extra>"
+            ),
+        ))
+        fig_ndci_bar.update_layout(
+            xaxis_title="NDCI promedio",
+            yaxis_title=None,
+            height=620,
+            margin=dict(l=170, r=30, t=10, b=45),
+            showlegend=False,
+        )
+        st.plotly_chart(fig_ndci_bar, use_container_width=True)
+
+        if not df_ndci_obs.empty:
+            orden_cuerpos = df_ndci_resumen["nombre"].tolist()
+            df_ndci_obs["nombre"] = pd.Categorical(
+                df_ndci_obs["nombre"],
+                categories=orden_cuerpos,
+                ordered=True,
+            )
+            df_ndci_obs = df_ndci_obs.sort_values("nombre")
+
+            fig_ndci_box = go.Figure()
+            for nombre in orden_cuerpos:
+                valores = df_ndci_obs.loc[df_ndci_obs["nombre"] == nombre, "ndci"]
+                if valores.empty:
+                    continue
+                fig_ndci_box.add_trace(go.Box(
+                    x=valores,
+                    y=[nombre] * len(valores),
+                    name=nombre,
+                    orientation="h",
+                    boxpoints="outliers",
+                    marker=dict(size=3, opacity=0.45),
+                    line=dict(width=1),
+                    hovertemplate="<b>%{y}</b><br>NDCI: %{x:.4f}<extra></extra>",
+                    showlegend=False,
+                ))
+            fig_ndci_box.update_layout(
+                xaxis_title="NDCI",
+                yaxis_title=None,
+                height=680,
+                margin=dict(l=170, r=30, t=10, b=45),
+            )
+            st.markdown("##### Distribución de observaciones por cuerpo de agua")
+            st.plotly_chart(fig_ndci_box, use_container_width=True)
+
+        if not df_ndci_mensual.empty:
+            df_ndci_mensual = df_ndci_mensual.copy()
+            df_ndci_mensual["mes_label"] = df_ndci_mensual["mes"].dt.strftime("%Y-%m")
+            df_heatmap = df_ndci_mensual.pivot_table(
+                index="nombre",
+                columns="mes_label",
+                values="ndci_promedio",
+                aggfunc="mean",
+            )
+            orden_cuerpos = df_ndci_resumen["nombre"].tolist()
+            df_heatmap = df_heatmap.reindex(orden_cuerpos)
+
+            fig_ndci_heatmap = go.Figure(go.Heatmap(
+                z=df_heatmap.values,
+                x=[str(col) for col in df_heatmap.columns],
+                y=df_heatmap.index,
+                colorscale="RdYlGn",
+                colorbar=dict(title="NDCI"),
+                hovertemplate="<b>%{y}</b><br>Mes: %{x}<br>NDCI: %{z:.4f}<extra></extra>",
+            ))
+            fig_ndci_heatmap.update_layout(
+                xaxis_title="Mes",
+                yaxis_title=None,
+                height=640,
+                margin=dict(l=170, r=30, t=10, b=45),
+            )
+            st.markdown("##### Promedio mensual por cuerpo de agua")
+            st.plotly_chart(fig_ndci_heatmap, use_container_width=True)
+
+        df_tabla_ndci = df_ndci_resumen.rename(columns={
+            "nombre": "Cuerpo de agua",
+            "observaciones": "Obs.",
+            "fecha_min": "Primera medición",
+            "fecha_max": "Última medición",
+            "ndci_promedio": "NDCI promedio",
+            "ndci_min": "NDCI mín.",
+            "ndci_max": "NDCI máx.",
+            "ndci_desvio": "Desvío",
+        }).copy()
+        st.dataframe(
+            df_tabla_ndci.round({
+                "NDCI promedio": 4,
+                "NDCI mín.": 4,
+                "NDCI máx.": 4,
+                "Desvío": 4,
+            }),
+            use_container_width=True,
+            hide_index=True,
+        )
+# ── TAB PRECIPITACIÓN VS NDCI ────────────────────────────────────────────────
 
 with tab_precip_ndci:
     st.markdown("#### PAD vs NDCI")

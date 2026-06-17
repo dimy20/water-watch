@@ -9,7 +9,12 @@ from .ose import (
     get_patron_estacional,
     get_pct_presencia_por_departamento_periodo,
 )
-from .gems import get_estaciones_por_departamento, get_gems_evolucion, get_gems_bacterio_por_departamento
+from .gems import (
+    get_estaciones_por_departamento,
+    get_gems_evolucion,
+    get_gems_bacterio_por_departamento,
+    get_gems_evolucion_todos_departamentos,
+)
 from .grillas import get_hidrico_suelo_por_departamento, TIPOS
 from .riesgo import get_riesgo_por_departamento
 from .reclamos import (
@@ -19,6 +24,9 @@ from .reclamos import (
 )
 from .precipitacion_ndci import (
     get_locations_con_ndci,
+    get_ndci_mensual_cuerpos_agua,
+    get_ndci_observaciones_cuerpos_agua,
+    get_ndci_resumen_cuerpos_agua,
     get_precipitacion_vs_ndci,
     get_correlacion_por_lag,
     get_punto_grilla_cercano_sentinel,

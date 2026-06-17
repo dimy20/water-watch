@@ -106,6 +106,122 @@ def get_ndci_mensual(pg_conn, location_id, anio_inicio, anio_fin) -> pd.DataFram
     return df
 
 
+def _nombres_sentinel_locations(mongo_db, location_ids) -> dict:
+    docs = mongo_db["sentinel_locations"].find(
+        {"_id": {"$in": list(location_ids)}},
+        {"_id": 1, "nombre": 1},
+    )
+    return {doc["_id"]: doc["nombre"] for doc in docs}
+
+
+def get_ndci_resumen_cuerpos_agua(pg_conn, mongo_db, anio_inicio, anio_fin) -> pd.DataFrame:
+    sql = """
+        SELECT location_id,
+               COUNT(*) AS observaciones,
+               MIN(fecha_inicio) AS fecha_min,
+               MAX(fecha_inicio) AS fecha_max,
+               AVG(value) AS ndci_promedio,
+               MIN(value) AS ndci_min,
+               MAX(value) AS ndci_max,
+               STDDEV_SAMP(value) AS ndci_desvio
+        FROM sentinel_params
+        WHERE code = 'NDCI'
+          AND fecha_inicio >= make_date(%s, 1, 1)
+          AND fecha_inicio < make_date(%s + 1, 1, 1)
+        GROUP BY location_id
+        ORDER BY ndci_promedio DESC
+    """
+    cur = pg_conn.cursor()
+    cur.execute(sql, (anio_inicio, anio_fin))
+    rows = cur.fetchall()
+    columns = [
+        "location_id",
+        "observaciones",
+        "fecha_min",
+        "fecha_max",
+        "ndci_promedio",
+        "ndci_min",
+        "ndci_max",
+        "ndci_desvio",
+    ]
+    df = pd.DataFrame(rows, columns=columns)
+    if df.empty:
+        return pd.DataFrame(columns=["nombre", *columns[1:]])
+
+    nombres = _nombres_sentinel_locations(mongo_db, df["location_id"].tolist())
+    df["nombre"] = df["location_id"].map(nombres)
+    df = df.dropna(subset=["nombre"])
+
+    for col in ["ndci_promedio", "ndci_min", "ndci_max", "ndci_desvio"]:
+        df[col] = df[col].astype(float)
+
+    return df[
+        [
+            "nombre",
+            "observaciones",
+            "fecha_min",
+            "fecha_max",
+            "ndci_promedio",
+            "ndci_min",
+            "ndci_max",
+            "ndci_desvio",
+        ]
+    ].reset_index(drop=True)
+
+
+def get_ndci_mensual_cuerpos_agua(pg_conn, mongo_db, anio_inicio, anio_fin) -> pd.DataFrame:
+    sql = """
+        SELECT location_id,
+               DATE_TRUNC('month', fecha_inicio)::date AS mes,
+               COUNT(*) AS observaciones,
+               AVG(value) AS ndci_promedio
+        FROM sentinel_params
+        WHERE code = 'NDCI'
+          AND fecha_inicio >= make_date(%s, 1, 1)
+          AND fecha_inicio < make_date(%s + 1, 1, 1)
+        GROUP BY location_id, mes
+        ORDER BY location_id, mes
+    """
+    cur = pg_conn.cursor()
+    cur.execute(sql, (anio_inicio, anio_fin))
+    rows = cur.fetchall()
+    df = pd.DataFrame(rows, columns=["location_id", "mes", "observaciones", "ndci_promedio"])
+    if df.empty:
+        return pd.DataFrame(columns=["nombre", "mes", "observaciones", "ndci_promedio"])
+
+    nombres = _nombres_sentinel_locations(mongo_db, df["location_id"].tolist())
+    df["nombre"] = df["location_id"].map(nombres)
+    df = df.dropna(subset=["nombre"])
+    df["mes"] = pd.to_datetime(df["mes"])
+    df["ndci_promedio"] = df["ndci_promedio"].astype(float)
+    return df[["nombre", "mes", "observaciones", "ndci_promedio"]].reset_index(drop=True)
+
+
+def get_ndci_observaciones_cuerpos_agua(pg_conn, mongo_db, anio_inicio, anio_fin) -> pd.DataFrame:
+    sql = """
+        SELECT location_id,
+               fecha_inicio,
+               value AS ndci
+        FROM sentinel_params
+        WHERE code = 'NDCI'
+          AND fecha_inicio >= make_date(%s, 1, 1)
+          AND fecha_inicio < make_date(%s + 1, 1, 1)
+        ORDER BY location_id, fecha_inicio
+    """
+    cur = pg_conn.cursor()
+    cur.execute(sql, (anio_inicio, anio_fin))
+    rows = cur.fetchall()
+    df = pd.DataFrame(rows, columns=["location_id", "fecha_inicio", "ndci"])
+    if df.empty:
+        return pd.DataFrame(columns=["nombre", "fecha_inicio", "ndci"])
+
+    nombres = _nombres_sentinel_locations(mongo_db, df["location_id"].tolist())
+    df["nombre"] = df["location_id"].map(nombres)
+    df = df.dropna(subset=["nombre"])
+    df["ndci"] = df["ndci"].astype(float)
+    return df[["nombre", "fecha_inicio", "ndci"]].reset_index(drop=True)
+
+
 def _reindex_mensual(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return df
